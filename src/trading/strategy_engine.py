@@ -10,14 +10,9 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from src.pipeline.websocket_client import DhanWebSocketIngester
 from src.trading.execution_client import (
-    DhanExecutionClient,
-    OrderRequest,
-    OrderResponse,
-    OrderSide,
+    AngelExecutionClient,
     OrderType,
-    OrderValidity,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,6 +23,18 @@ class SignalType(Enum):
     SELL = "SELL"
     CLOSE = "CLOSE"
     HOLD = "HOLD"
+
+
+class OrderValidity(str, Enum):
+    DAY = "DAY"
+    IOC = "IOC"
+
+
+@dataclass(slots=True)
+class OrderResponse:
+    order_id: str
+    order_status: str = "SUBMITTED"
+    error_message: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,15 +138,7 @@ class RiskManager:
         signal: Signal,
         current_price: Decimal | None = None,
     ) -> tuple[bool, str]:
-        """Validate order against risk limits.
-
-        Args:
-            signal: Proposed trading signal.
-            current_price: Current market price for PnL calc.
-
-        Returns:
-            Tuple of (allowed: bool, reason: str).
-        """
+        """Validate order against risk limits."""
         async with self._lock:
             if self._state.blocked:
                 return False, f"Trading blocked: {self._state.block_reason}"
@@ -197,13 +196,14 @@ class RiskManager:
                 trigger = entry_price * (1 + Decimal(str(stop_pct)))
 
             if signal.order_type == OrderType.MARKET:
+                stop_order_type = getattr(OrderType, "STOP_LOSS_MARKET", getattr(OrderType, "STOPLOSS", OrderType.MARKET))
                 return Signal(
                     security_id=signal.security_id,
                     signal_type=signal.signal_type,
                     quantity=signal.quantity,
                     price=signal.price,
                     trigger_price=trigger,
-                    order_type=OrderType.STOP_LOSS_MARKET,
+                    order_type=stop_order_type,
                     validity=signal.validity,
                     metadata={**signal.metadata, "stop_loss": "auto"},
                     timestamp=signal.timestamp,
@@ -238,14 +238,14 @@ class StrategyEngine:
 
     def __init__(
         self,
-        execution_client: DhanExecutionClient,
+        execution_client: AngelExecutionClient,
         risk_limits: RiskLimits | None = None,
         tick_buffer_size: int = 1000,
     ) -> None:
         self._execution = execution_client
         self._risk = RiskManager(risk_limits or RiskLimits())
         self._strategies: dict[str, BaseStrategy] = {}
-        self._ingester: DhanWebSocketIngester | None = None
+        self._ingester: Any | None = None
         self._tick_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=tick_buffer_size)
         self._running = False
         self._processor_task: asyncio.Task | None = None
@@ -258,7 +258,7 @@ class StrategyEngine:
         self._strategies[strategy.name] = strategy
         logger.info("Strategy registered", extra={"strategy_name": strategy.name, "securities": strategy.security_ids})
 
-    def set_ingester(self, ingester: DhanWebSocketIngester) -> None:
+    def set_ingester(self, ingester: Any) -> None:
         """Link WebSocket ingester for tick consumption."""
         self._ingester = ingester
 
@@ -275,9 +275,12 @@ class StrategyEngine:
 
     async def _dispatch_tick(self, tick: dict[str, Any]) -> None:
         """Dispatch tick to relevant strategies."""
-        security_id = tick.get("security_id")
-        if security_id is None:
+        # Cross-broker symbol resolution (handles both Dhan 'security_id' and Angel 'token')
+        raw_id = tick.get("security_id") or tick.get("token")
+        if raw_id is None:
             return
+
+        security_id = int(raw_id)
 
         for strategy in self._strategies.values():
             if security_id in strategy.security_ids:
@@ -289,50 +292,44 @@ class StrategyEngine:
                     logger.error(
                         "Strategy error",
                         extra={"strategy": strategy.name, "security_id": security_id, "error": str(exc)},
+                        exc_info=True
                     )
 
     async def _handle_signal(self, signal: Signal) -> None:
         """Process signal through risk and execute."""
-        # Get current price for risk checks
         current_price = signal.price or Decimal(str(signal.trigger_price or 0))
 
         # Validate against risk limits
         allowed, reason = await self._risk.validate_order(signal, current_price)
         if not allowed:
-            logger.warning("Signal rejected by risk", extra={"signal": signal.__dict__, "reason": reason})
+            logger.warning("Signal rejected by risk", extra={"signal": str(signal), "reason": reason})
             return
 
         # Apply hard stop loss
         if signal.order_type == OrderType.MARKET and current_price > 0:
             signal = await self._risk.apply_stop_loss(signal, current_price)
 
-        # Convert to order request
-        order_req = OrderRequest(
-            security_id=signal.security_id,
-            exchange_segment="NSE_EQ",
-            transaction_type=OrderSide.BUY if signal.signal_type == SignalType.BUY else OrderSide.SELL,
-            order_type=signal.order_type,
-            quantity=signal.quantity,
-            price=float(signal.price) if signal.price else None,
-            trigger_price=float(signal.trigger_price) if signal.trigger_price else None,
-            validity=signal.validity,
-        )
-
-        # Execute order
+        # Execute order directly via AngelExecutionClient
         try:
-            logger.info("Sending order", extra={"signal": signal.__dict__})
-            response = await self._execution.place_order(order_req)
+            logger.info("Sending order", extra={"signal": str(signal)})
+            order_res = await self._execution.place_order(signal)
+            if not order_res:
+                return
 
-            # Track open order
+            order_id = getattr(order_res, "order_id", str(order_res))
+            response = OrderResponse(order_id=order_id)
+
+            # Track open order in risk state
             async with self._risk._lock:
-                self._risk._state.open_orders[response.order_id] = response
+                self._risk._state.open_orders[order_id] = response
 
-            # Track order lifecycle
-            task = asyncio.create_task(self._track_order(response.order_id, signal))
-            self._order_tracker[response.order_id] = task
+            # Track order lifecycle if execution client supports get_order_status
+            if hasattr(self._execution, "get_order_status"):
+                task = asyncio.create_task(self._track_order(order_id, signal))
+                self._order_tracker[order_id] = task
 
         except Exception as exc:
-            logger.error("Order execution failed", extra={"signal": signal.__dict__, "error": str(exc)})
+            logger.error("Order execution failed", extra={"signal": str(signal), "error": str(exc)})
 
     async def _track_order(self, order_id: str, signal: Signal) -> None:
         """Monitor order until completion."""
@@ -346,7 +343,7 @@ class StrategyEngine:
                         self._risk._state.open_orders.pop(order_id, None)
 
                     if status.order_status == "COMPLETE":
-                        logger.info("Order filled", extra={"order_id": order_id, "signal": signal.__dict__})
+                        logger.info("Order filled", extra={"order_id": order_id, "signal": str(signal)})
                     elif status.order_status == "REJECTED":
                         logger.warning("Order rejected", extra={"order_id": order_id, "error": status.error_message})
                     break
@@ -365,20 +362,16 @@ class StrategyEngine:
 
         self._running = True
 
-        # Start all strategies
         for strategy in self._strategies.values():
             await strategy.start()
 
-        # Start tick processor
         self._processor_task = asyncio.create_task(self._process_ticks())
-
         logger.info("Strategy engine started", extra={"strategies": list(self._strategies.keys())})
 
     async def stop(self) -> None:
         """Stop the strategy engine gracefully."""
         self._running = False
 
-        # Stop tick processor
         if self._processor_task:
             self._processor_task.cancel()
             try:
@@ -386,26 +379,21 @@ class StrategyEngine:
             except asyncio.CancelledError:
                 pass
 
-        # Cancel order trackers
         for task in self._order_tracker.values():
             task.cancel()
         await asyncio.gather(*self._order_tracker.values(), return_exceptions=True)
 
-        # Stop strategies
         for strategy in self._strategies.values():
             await strategy.stop()
 
         logger.info("Strategy engine stopped")
 
     async def enqueue_tick(self, tick: dict[str, Any]) -> bool:
-        """Add tick to processing queue (called from WebSocket ingester).
-
-        Returns:
-            True if enqueued, False if queue full.
-        """
+        """Add tick to processing queue."""
         try:
             self._tick_queue.put_nowait(tick)
             return True
         except asyncio.QueueFull:
-            logger.warning("Tick queue full, dropping tick", extra={"security_id": tick.get("security_id")})
+            sec_id = tick.get("security_id") or tick.get("token")
+            logger.warning("Tick queue full, dropping tick", extra={"security_id": sec_id})
             return False

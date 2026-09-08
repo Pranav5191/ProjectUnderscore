@@ -5,12 +5,17 @@ import logging
 import signal
 import sys
 import os
+import threading
 from typing import Any, NoReturn
 
-from src.auth.dhan_auth import DhanAuthenticator
+# New Angel One Integrations
+from src.auth.angel_auth import AngelAuthenticator
+from src.pipeline.websocket_client import AngelDataPipeline
+from src.pipeline.safety_timer import intraday_square_off_guard
+from src.trading.execution_client import AngelExecutionClient, OrderType
+
+# Core Architecture 
 from src.pipeline.db import DatabaseManager
-from src.pipeline.websocket_client import DhanWebSocketIngester
-from src.trading.execution_client import DhanExecutionClient, OrderType
 from src.trading.strategy_engine import BaseStrategy, RiskLimits, Signal, SignalType, StrategyEngine
 
 logging.basicConfig(
@@ -22,7 +27,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class MovingAverageCrossover(BaseStrategy):
-    """Example strategy: Simple MA crossover on tick data."""
+    """Simple MA crossover on tick data."""
     def __init__(self, security_ids: list[int], fast_window: int = 5, slow_window: int = 20) -> None:
         super().__init__("MA_Crossover", security_ids)
         self._fast_window = fast_window
@@ -36,14 +41,21 @@ class MovingAverageCrossover(BaseStrategy):
         logger.info("MA Crossover strategy stopped")
 
     async def on_tick(self, tick: dict[str, Any]) -> list[Signal]:
-        security_id = tick.get("security_id")
-        ltp = tick.get("ltp")
-
-        if security_id is None or ltp is None:
+        token_str = tick.get("token")
+        if token_str is None:
             return []
+            
+        security_id = int(token_str)
+
+        # Parse Angel One LTP (paise to rupees conversion)
+        ltp_raw = tick.get("last_traded_price")
+        if ltp_raw is None:
+            return []
+            
+        ltp = float(ltp_raw) / 100.0
 
         prices = self._prices.setdefault(security_id, [])
-        prices.append(float(ltp))
+        prices.append(ltp)
 
         if len(prices) > self._slow_window:
             prices.pop(0)
@@ -77,25 +89,26 @@ class MovingAverageCrossover(BaseStrategy):
 class PipelineOrchestrator:
     """Orchestrates ingestion, execution, and strategy components."""
     def __init__(self) -> None:
-        self._authenticator = DhanAuthenticator()
+        self._authenticator = AngelAuthenticator()
         self._db_manager = DatabaseManager()
-        self._ingester: DhanWebSocketIngester | None = None
-        self._execution_client: DhanExecutionClient | None = None
+        self._ingester: AngelDataPipeline | None = None
+        self._execution_client: AngelExecutionClient | None = None
         self._strategy_engine: StrategyEngine | None = None
         self._shutdown_event = asyncio.Event()
+        self._loop = asyncio.get_running_loop()
 
     async def initialize(self) -> None:
         logger.info("Initializing pipeline components")
         await self._db_manager.connect()
-        
-        # Safely get the client ID from environment variables
-        client_id = os.getenv("DHAN_CLIENT_ID", "")
-        
-        self._execution_client = DhanExecutionClient(
+
+        client_id = os.getenv("ANGEL_CLIENT_ID", "")
+
+        # Real Live Market Execution Client
+        self._execution_client = AngelExecutionClient(
             authenticator=self._authenticator,
-            client_id=client_id,  
+            client_id=client_id,
         )
-        
+
         risk_limits = RiskLimits(
             max_open_positions=5, max_position_size=100, max_order_size=50, max_daily_loss=25000, hard_stop_loss_pct=0.015,
         )
@@ -103,34 +116,45 @@ class PipelineOrchestrator:
             execution_client=self._execution_client, risk_limits=risk_limits,
         )
 
-        test_securities = [1333]  # Reliance
+        test_securities = [2885]  # Reliance NSE Token mapped to Angel One
         self._strategy_engine.register_strategy(MovingAverageCrossover(test_securities))
 
-        self._ingester = DhanWebSocketIngester(
-            db_manager=self._db_manager, authenticator=self._authenticator,
-        )
-        
-        original_handle = self._ingester._handle_message
-        async def bridged_handle(message: str) -> None:
-            await original_handle(message)
+        self._ingester = AngelDataPipeline()
+
+        # Bridge: Patch _on_data directly on the ingester instance so it feeds the strategy engine
+        original_on_data = self._ingester._on_data
+
+        def bridged_on_data(wsapp: Any, message: dict[str, Any]) -> None:
+            if original_on_data:
+                original_on_data(wsapp, message)
+            
             try:
-                import json
-                data = json.loads(message)
-                ticks = data if isinstance(data, list) else [data]
-                for tick in ticks:
-                    await self._strategy_engine.enqueue_tick(tick)
-            except Exception as exc:
+                asyncio.run_coroutine_threadsafe(
+                    self._strategy_engine.enqueue_tick(message),
+                    self._loop
+                )
+            except Exception:
                 pass
 
-        self._ingester._handle_message = bridged_handle 
+        self._ingester._on_data = bridged_on_data
 
     async def run(self, security_ids: list[int]) -> None:
         await self._strategy_engine.start()
-        await self._ingester.start_streaming(security_ids)
+        
+        # Start Angel One WebSocket natively in a daemon thread so it doesn't block asyncio
+        self._ws_thread = threading.Thread(target=self._ingester.start, daemon=True)
+        self._ws_thread.start()
+
+        # Keep the orchestrator alive until a shutdown signal is sent
+        await self._shutdown_event.wait()
 
     async def shutdown(self) -> None:
         if self._strategy_engine: await self._strategy_engine.stop()
-        if self._ingester: await self._ingester.stop()
+        if self._ingester: 
+            try:
+                self._ingester.sws.close_connection()
+            except Exception:
+                pass
         if self._execution_client: await self._execution_client.close()
         await self._db_manager.close()
 
@@ -145,12 +169,18 @@ async def main() -> NoReturn:
 
     try:
         await orchestrator.initialize()
-        run_task = asyncio.create_task(orchestrator.run([1333]))
-        shutdown_task = asyncio.create_task(orchestrator._shutdown_event.wait())
         
-        done, pending = await asyncio.wait({run_task, shutdown_task}, return_when=asyncio.FIRST_COMPLETED)
+        run_task = asyncio.create_task(orchestrator.run([2885])) 
         
-        # If it crashes, don't swallow the error! Print it!
+        # Inject the live safety guard with the REAL execution client
+        safety_task = asyncio.create_task(intraday_square_off_guard(orchestrator._execution_client))
+
+        # Wait for either the pipeline to shut down (run_task) or a fatal timer crash (safety_task)
+        done, pending = await asyncio.wait(
+            {run_task, safety_task}, 
+            return_when=asyncio.FIRST_COMPLETED
+        )
+
         for task in done:
             if task.exception():
                 logger.error(f"Pipeline Crashed: {task.exception()}")

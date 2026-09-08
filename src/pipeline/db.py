@@ -124,13 +124,13 @@ class DatabaseManager:
         for i, tick in enumerate(ticks):
             try:
                 record = (
-                    tick["timestamp"],
-                    tick["security_id"],
-                    tick["ltp"],
-                    tick["volume"],
-                    tick.get("bid"),
-                    tick.get("ask"),
-                    tick.get("open_interest"),
+                    tick.get("exchange_timestamp") or tick.get("timestamp"),
+                    int(tick.get("token") or tick.get("security_id")),
+                    tick.get("last_traded_price") or tick.get("ltp"),
+                    tick.get("volume", 0),
+                    tick.get("bid", 0),
+                    tick.get("ask", 0),
+                    tick.get("open_interest", 0),
                 )
                 records.append(record)
             except KeyError as exc:
