@@ -31,22 +31,25 @@ def main():
     with pg_conn.cursor(name='tick_cursor') as cursor:
         # IMPORTANT: Change 'ticks' to your actual table name if Pranav named it differently
         # Select only what you need. Assuming Pranav stores best_bid_vol and best_ask_vol.
+        # Updated query matching the new Level 2 schema
         cursor.execute("""
-            SELECT security_id, ltp, bid, ask, volume, timestamp 
+            SELECT security_id, ltp, ltq, bid, ask, best_bid_vol, best_ask_vol, timestamp 
             FROM market_ticks 
             ORDER BY timestamp ASC;
         """)
         
         count = 0
         for row in cursor:
-            # Map exactly to what the database returns
+            # Map exactly to the new SELECT order
             tick_data = {
                 "security_id": row[0],
                 "ltp": float(row[1]) if row[1] else 0.0,
-                "bid": float(row[2]) if row[2] else 0.0,
-                "ask": float(row[3]) if row[3] else 0.0,
-                "volume": int(row[4]) if row[4] else 0,
-                "timestamp": int(row[5]) if row[5] else 0
+                "ltq": int(row[2]) if row[2] else 0,
+                "bid": float(row[3]) if row[3] else 0.0,
+                "ask": float(row[4]) if row[4] else 0.0,
+                "best_bid_vol": int(row[5]) if row[5] else 0,
+                "best_ask_vol": int(row[6]) if row[6] else 0,
+                "timestamp": int(row[7]) if row[7] else 0
             }
             
             # Push to Redis channel (Change "live_ticks" to whatever Pranav uses)
@@ -57,7 +60,10 @@ def main():
                 print(f"Replayed {count} ticks...")
                 
             # Artificial latency: 1 millisecond sleep to mimic live tick spacing
-            time.sleep(0.001) 
+            if count >16000:
+                time.sleep(0.33)
+            else:
+                time.sleep(0.0001)
 
     print("Replay complete.")
     pg_conn.close()
