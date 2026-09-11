@@ -5,16 +5,15 @@ import redis
 from dotenv import load_dotenv
 
 # Indicators
-from indicators.spread import BidAskSpread
-from indicators.obi import OrderBookImbalance
-from indicators.cvd import CumulativeVolumeDelta
-from indicators.wmp import WeightedMidPrice
+from src.trading.indicators.spread import BidAskSpread
+from src.trading.indicators.obi import OrderBookImbalance
+from src.trading.indicators.cvd import CumulativeVolumeDelta
+from src.trading.indicators.wmp import WeightedMidPrice
 
 # Sandbox Components
-from portfolio import PortfolioManager
-from audit_logger import AuditLogger
-from execution_client import ExecutionEngine
-
+from src.trading.portfolio import PortfolioManager
+from src.trading.audit_logger import AuditLogger
+from src.trading.execution_client import ExecutionEngine
 current_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(current_dir, "../../.env")
 load_dotenv(dotenv_path=env_path)

@@ -47,8 +47,8 @@ class AngelDataPipeline:
     def _on_open(self, wsapp):
         logger.info("WebSocket connection established. Subscribing to market feed...")
         
-        action = 1 
-        mode = 1   
+        action = 1
+        mode = 3
         token_list = [
             {
                 "exchangeType": 1, 
