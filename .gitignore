@@ -1,6 +1,21 @@
-.env
+# Python Environment
 venv/
 __pycache__/
+*.pyc
+
+# Local Databases (Docker)
+postgres_data/
+redis_data/
+
+# Secrets
+.env
+
+# Market Data Dumps
+*.sql
+*.csv
+
+#previous mentioned
+venv314/
 *.log
 data/historical/
 data/profiling/
