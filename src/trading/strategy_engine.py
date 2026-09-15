@@ -2,18 +2,28 @@
 import os
 import json
 import redis
+import uuid
 from dotenv import load_dotenv
+from datetime import datetime, time
 
 # Indicators
 from src.trading.indicators.spread import BidAskSpread
 from src.trading.indicators.obi import OrderBookImbalance
 from src.trading.indicators.cvd import CumulativeVolumeDelta
 from src.trading.indicators.wmp import WeightedMidPrice
+from src.trading.indicators.atr import TickATR
 
 # Sandbox Components
 from src.trading.portfolio import PortfolioManager
 from src.trading.audit_logger import AuditLogger
 from src.trading.execution_client import ExecutionEngine
+
+#risk components
+from src.trading.risk_manager import RiskManager
+
+#Log components
+from src.trading.audit_logger import setup_signal_logger
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(current_dir, "../../.env")
 load_dotenv(dotenv_path=env_path)
@@ -30,7 +40,8 @@ def main():
     obi = OrderBookImbalance()
     cvd = CumulativeVolumeDelta()
     wmp = WeightedMidPrice()
-    indicators = [spread, obi, cvd, wmp]
+    atr = TickATR(period=14, tick_chunk=50) # Added ATR
+    indicators = [spread, obi, cvd, wmp, atr] # Added to list
     
     # Initialize Sandbox (Starting with ₹1,00,000 | 10% max allocation | 2% max daily loss)
     portfolio = PortfolioManager(starting_balance=100000.0, max_allocation_pct=0.10, max_loss_pct=0.02)
@@ -39,29 +50,123 @@ def main():
     
     pubsub = r.pubsub()
     pubsub.subscribe("live_ticks")
-    
+    risk_manager = RiskManager(base_risk_pct = 0.10)
+    # Initialize the Signal Logger
+    signal_logger = setup_signal_logger()
+    print("Signal Logger initialized. Silently logging to /logs directory...")
     print("Execution System Live. Listening for ticks and searching for setups...")
-    
     for message in pubsub.listen():
         if message['type'] == 'message':
             tick = json.loads(message['data'])
+            sec_id = tick.get('security_id')
+            tick_ltp = tick.get('ltp', 0.0)
+
+            # =================================================================
+            # 1. THE 3:14 PM HARD KILL-SWITCH (AUTO SQUARE-OFF PRECAUTION)
+            # =================================================================
+            current_time = datetime.now().time()
+            cutoff_time = time(23, 14, 0) # 15:14:00 (3:14 PM)
             
-            # 1. Update Math
+            if current_time >= cutoff_time:
+                open_positions = list(portfolio.positions.items())
+                
+                if open_positions:
+                    print("\n[SYSTEM ALERT] 3:14 PM Cutoff Reached. Initiating forced liquidation.")
+                    
+                    for open_sec_id, pos_data in open_positions:
+                        pos_qty = pos_data['qty']
+                        side = pos_data['side']
+                        
+                        # Reverse the action to close the trade
+                        exit_action = 'SELL' if side == 'BUY' else 'BUY'
+                        
+                        trace_id = f"{open_sec_id}-SQUAREOFF-{uuid.uuid4().hex[:6]}"
+                        print(f"[LIQUIDATION] Force closing {side} position on #{open_sec_id}. Trace: {trace_id}")
+                        
+                        # Fire the market order regardless of PnL
+                        engine.execute_paper_trade(tick, action=exit_action, qty=pos_qty, trace_id=trace_id)
+                
+                print("\n[SYSTEM TERMINATED] All intraday positions flat. Shutting down engine for the day.")
+                break  # This permanently breaks the Redis listening loop, stopping the engine
+            
+            # =================================================================
+            # 2. UPDATE INDICATOR MATH
+            # =================================================================
             for ind in indicators:
                 ind.update(tick)
             
             obi_score = obi.get_score()
             cvd_score = cvd.get_score()
-            sec_id = tick.get('security_id')
             
-            # 2. Strategy Logic: Iceberg Absorption setup
-            # If OBI shows a massive sell wall (-0.4) while CVD shows aggressive buying (>1000)
-            # Iceberg Absorption Logic with State Filter
-            if obi_score < -0.4 and cvd_score > 1000:
-                engine.execute_paper_trade(tick, action='SELL', qty=5)
+            # =================================================================
+            # 3. POSITION MANAGEMENT (DYNAMIC ATR SL/TP BANDS)
+            # =================================================================
+            current_pos = portfolio.positions.get(sec_id)
+            if current_pos:
+                entry_price = current_pos['avg_price']
+                pos_qty = current_pos['qty']
+                side = current_pos['side']
                 
-            elif obi_score > 0.4 and cvd_score < -1000:
-                engine.execute_paper_trade(tick, action='BUY', qty=5)
+                atr_val = atr.get_score() if atr.get_score() > 0 else 1.0
+                
+                if side == 'BUY':
+                    tp_price = entry_price + (atr_val * 3.0)
+                    sl_price = entry_price - (atr_val * 1.5)
+                    
+                    if tick_ltp >= tp_price or tick_ltp <= sl_price:
+                        # Generate Trace ID for Exits
+                        trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                        reason = "TAKE PROFIT" if tick_ltp >= tp_price else "STOP LOSS"
+                        print(f"\n[{reason}] Long on #{sec_id}. Exiting. Trace: {trace_id}")
+                        
+                        engine.execute_paper_trade(tick, action='SELL', qty=pos_qty, trace_id=trace_id)
+                        continue
+                        
+                elif side == 'SELL':
+                    tp_price = entry_price - (atr_val * 3.0)
+                    sl_price = entry_price + (atr_val * 1.5)
+                    
+                    if tick_ltp <= tp_price or tick_ltp >= sl_price:
+                        # Generate Trace ID for Exits
+                        trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                        reason = "TAKE PROFIT" if tick_ltp <= tp_price else "STOP LOSS"
+                        print(f"\n[{reason}] Short on #{sec_id}. Exiting. Trace: {trace_id}")
+                        
+                        engine.execute_paper_trade(tick, action='BUY', qty=pos_qty, trace_id=trace_id)
+                        continue
+
+            # =================================================================
+            # 4. ENTRY STRATEGY LOGIC 
+            # =================================================================
+            if obi_score < -0.4 and cvd_score > 1000: # Bearish Absorption (SELL SIGNAL)
+                # Calculating Confidence
+                confidence = risk_manager.calculate_confidence(obi_score, cvd_score, spread.get_score())
+                #Get free cash
+                margin_used = sum(pos['qty'] * pos['avg_price'] for pos in portfolio.positions.values())
+                free_cash = portfolio.current_balance - margin_used
+                #Calculate quantity
+                qty = risk_manager.calculate_position_size(confidence, free_cash, tick_ltp, tick.get('best_bid_vol', 0))
+                if qty>0:
+                    trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                    #print(f"\n[SIGNAL CONFIRMED] Confidence: {confidence:.2f} | Dynamic Qty: {qty} | Trace: {trace_id}")
+                    status=engine.execute_paper_trade(tick, action='SELL', qty=5, trace_id=trace_id)
+                    signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: SELL | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
+                
+            elif obi_score > 0.4 and cvd_score < -1000: #Bullish Absorption (BUY SIGNAL)
+                #calculate confidence
+                confidence = risk_manager.calculate_confidence(obi_score, cvd_score, spread.get_score())
+                #calculate free cash
+                margin_used = sum(pos['qty'] * pos['avg_price'] for pos in portfolio.positions.values())
+                free_cash = portfolio.current_balance - margin_used
+                #calculate quantity
+                qty = risk_manager.calculate_position_size(
+                    confidence, free_cash, tick_ltp, tick.get('best_ask_vol', 0)
+                )
+                if(qty>0):
+                    trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                    #print(f"\n[SIGNAL CONFIRMED] Confidence: {confidence:.2f} | Dynamic Qty: {qty} | Trace: {trace_id}")
+                    status = engine.execute_paper_trade(tick, action='BUY', qty=5, trace_id=trace_id)
+                    signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: BUY | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
 
 if __name__ == "__main__":
     main()

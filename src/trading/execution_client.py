@@ -8,15 +8,37 @@ class ExecutionEngine:
         self.logger = logger
         self.simulated_latency = 0.050 
 
-    def execute_paper_trade(self, tick: dict, action: str, qty: int):
+    def execute_paper_trade(self, tick: dict, action: str, qty: int, trace_id: str = "NO_TRACE") -> str:
         sec_id = tick.get('security_id')
         tick_timestamp = tick.get('timestamp')
         estimated_price = tick.get('ask') if action == 'BUY' else tick.get('bid')
         margin_required = estimated_price * qty
 
-        if not self.portfolio.can_take_trade(sec_id, action, margin_required):
-            return
+        # ==========================================
+        # GATE 1: Pyramiding / Duplicate Order Check
+        # ==========================================
+        current_pos = self.portfolio.positions.get(sec_id)
+        if current_pos and current_pos['side'] == action:
+            return "REJECTED_POSITION_EXISTS"
 
+        # ==========================================
+        # GATE 2: Margin Check
+        # ==========================================
+        margin_used = sum(pos['qty'] * pos['avg_price'] for pos in self.portfolio.positions.values())
+        available_cash = self.portfolio.current_balance - margin_used
+        if available_cash < margin_required:
+            return "REJECTED_INSUFFICIENT_FUNDS"
+
+        # ==========================================
+        # GATE 3: Secondary Portfolio Limits
+        # ==========================================
+        if not self.portfolio.can_take_trade(sec_id, action, margin_required):
+            return "REJECTED_PORTFOLIO_LIMITS"
+
+        # ==========================================
+        # EXECUTION
+        # ==========================================
+        import time
         time.sleep(self.simulated_latency)
 
         best_vol = tick.get('best_ask_vol') if action == 'BUY' else tick.get('best_bid_vol')
@@ -27,14 +49,13 @@ class ExecutionEngine:
         booked_pnl = self.portfolio.update_position(sec_id, action, qty, fill_price)
         total_balance = self.portfolio.current_balance
 
+        # Log to your CSV Vault
         self.logger.log_trade(
-            tick_timestamp, sec_id, action, fill_price, qty, 
+            trace_id, tick_timestamp, sec_id, action, fill_price, qty, 
             self.simulated_latency * 1000, slippage, booked_pnl, total_balance
         )
 
-        print(f"[{tick_timestamp}] {action} {qty}x #{sec_id} @ {fill_price:.2f} | "
-              f"Booked PnL: ₹{booked_pnl:.2f} | Total Balance: ₹{total_balance:.2f}")
-
+        return "EXECUTED"
         
 # import asyncio
 # from enum import Enum
