@@ -7,22 +7,22 @@ from dotenv import load_dotenv
 from datetime import datetime, time
 
 # Indicators
-from indicators.spread import BidAskSpread
-from indicators.obi import OrderBookImbalance
-from indicators.cvd import CumulativeVolumeDelta
-from indicators.wmp import WeightedMidPrice
-from indicators.atr import TickATR
+from src.trading.indicators.spread import BidAskSpread
+from src.trading.indicators.obi import OrderBookImbalance
+from src.trading.indicators.cvd import CumulativeVolumeDelta
+from src.trading.indicators.wmp import WeightedMidPrice
+from src.trading.indicators.atr import TickATR
 
 # Sandbox Components
-from portfolio import PortfolioManager
-from audit_logger import AuditLogger
-from execution_client import ExecutionEngine
+from src.trading.portfolio import PortfolioManager
+from src.trading.audit_logger import AuditLogger
+from src.trading.execution_client import ExecutionEngine
 
 #risk components
-from risk_manager import RiskManager
+from src.trading.risk_manager import RiskManager
 
 #Log components
-from audit_logger import setup_signal_logger
+from src.trading.audit_logger import setup_signal_logger
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(current_dir, "../../.env")
