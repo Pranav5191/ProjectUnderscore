@@ -60,10 +60,10 @@ def main():
                 print(f"Replayed {count} ticks...")
                 
             # Artificial latency: 1 millisecond sleep to mimic live tick spacing
-            if count >16000:
-                time.sleep(0.33)
-            else:
-                time.sleep(0.0001)
+            # if count >20000:
+            #     time.sleep(0.33)
+            # else:
+            time.sleep(0.0001)
 
     print("Replay complete.")
     pg_conn.close()
