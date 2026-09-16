@@ -1,4 +1,13 @@
 import os
+import sys
+
+# Force Python to recognize the project root directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '../../'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# ... rest of your imports (json, time, etc.)
 import pyotp
 import requests
 import json
@@ -6,6 +15,7 @@ import time
 from dotenv import load_dotenv
 from SmartApi import SmartConnect
 from datetime import datetime, timedelta
+from src.scripts.telegram_reporter import TelegramReporter 
 
 # Load environment variables
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -125,7 +135,6 @@ class PreMarketScreener:
         try:
             print("[SYSTEM] Executing Telegram pre-market dispatch...")
             # Import dynamically to avoid circular dependencies
-            from src.scripts.telegram_reporter import TelegramReporter 
             reporter = TelegramReporter()
             reporter.send_premarket_watchlist(self.watchlist_path)
         except Exception as e:
