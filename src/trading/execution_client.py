@@ -1,6 +1,6 @@
 import time
-from portfolio import PortfolioManager
-from audit_logger import AuditLogger
+from src.trading.portfolio import PortfolioManager
+from src.trading.audit_logger import AuditLogger
 
 class ExecutionEngine:
     def __init__(self, portfolio: PortfolioManager, logger: AuditLogger):

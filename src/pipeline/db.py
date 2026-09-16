@@ -43,10 +43,10 @@ class DatabaseManager:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
         self._pool: asyncpg.Pool | None = None
-        self._insert_stmt: str = """
-            INSERT INTO market_ticks (timestamp, security_id, ltp, volume, bid, ask, open_interest)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-        """
+        self._insert_stmt: str ="""
+        INSERT INTO market_ticks (timestamp, security_id, ltp, ltq, bid, ask, best_bid_vol, best_ask_vol)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    """
 
     async def connect(
         self,
@@ -124,14 +124,15 @@ class DatabaseManager:
         for i, tick in enumerate(ticks):
             try:
                 record = (
-                    tick.get("exchange_timestamp") or tick.get("timestamp"),
-                    int(tick.get("token") or tick.get("security_id")),
-                    tick.get("last_traded_price") or tick.get("ltp"),
-                    tick.get("volume", 0),
-                    tick.get("bid", 0),
-                    tick.get("ask", 0),
-                    tick.get("open_interest", 0),
-                )
+                tick.get("exchange_timestamp") or tick.get("timestamp"),
+                int(tick.get("token") or tick.get("security_id")),
+                tick.get("last_traded_price") or tick.get("ltp"),
+                tick.get("last_traded_quantity") or tick.get("ltq", 0),
+                tick.get("best_bid_price") or tick.get("bid", 0),
+                tick.get("best_ask_price") or tick.get("ask", 0),
+                tick.get("best_bid_vol") or 0,
+                tick.get("best_ask_vol") or 0,
+            	)
                 records.append(record)
             except KeyError as exc:
                 logger.error(
