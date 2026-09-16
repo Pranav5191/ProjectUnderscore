@@ -92,10 +92,8 @@ def main():
                 # THE CLOUD HANDOFF
                 # ==========================================
                 print("\n[SYSTEM] Commencing Cloud Handoff to AWS S3...")
-                import sys, os
                 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
                 from scripts.aws_sync import AWSSync
-                
                 cloud_sync = AWSSync()
                 cloud_sync.upload_daily_logs()
 

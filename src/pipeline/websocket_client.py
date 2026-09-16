@@ -37,27 +37,69 @@ class AngelDataPipeline:
     def _on_data(self, wsapp, message):
         """Callback triggered on every incoming market tick packet."""
         try:
+            # Skip non-tick messages (like heartbeats)
+            if "token" not in message:
+                return
+
+            # Safely extract the top level of the order book (Index 0)
+            best_buy_data = message.get("best_5_buy_data", [])
+            best_sell_data = message.get("best_5_sell_data", [])
+            
+            best_buy = best_buy_data[0] if best_buy_data else {}
+            best_sell = best_sell_data[0] if best_sell_data else {}
+
+            # Standardize the payload keys and convert paise to INR
+            normalized_tick = {
+                "timestamp": message.get("exchange_timestamp", 0),
+                "security_id": int(message.get("token", 0)),
+                "ltp": message.get("last_traded_price", 0) / 100.0,
+                "ltq": message.get("last_traded_quantity", 0),
+                "bid": best_buy.get("price", 0) / 100.0,
+                "ask": best_sell.get("price", 0) / 100.0,
+                "best_bid_vol": best_buy.get("quantity", 0),
+                "best_ask_vol": best_sell.get("quantity", 0)
+            }
+
+            # 1. Stream to Batch Writer (PostgreSQL persistence)
             self.redis_client.xadd(
                 "market:ticks",
-                {"payload": json.dumps(message)}
+                {"payload": json.dumps(normalized_tick)}
             )
+            
+            # 2. Publish directly to Strategy Engine (Real-time quantitative analysis)
+            self.redis_client.publish(
+                "live_ticks", 
+                json.dumps(normalized_tick)
+            )
+
         except Exception as e:
-            logger.error(f"Error pushing tick to Redis: {e}")
+            logger.error(f"Error parsing/pushing tick: {e}")
 
     def _on_open(self, wsapp):
-        logger.info("WebSocket connection established. Subscribing to market feed...")
-        
-        action = 1
-        mode = 3
+        logger.info("WebSocket connection established. Reading dynamic symbols...")
+
+        # 1. Read the JSON config file
+        try:
+            # Adjust the path if your symbols.json is in a config folder
+            with open("symbols.json", "r") as f:
+                config = json.load(f)
+                active_tokens = config.get("tokens", [])
+        except Exception as e:
+            logger.error(f"Failed to read symbols.json, using fallbacks. Error: {e}")
+            active_tokens = ["3045", "2885"] # Safety fallback
+
+        # 2. Build the payload for Angel One
+        mode = 3 # SnapQuote for full order book
         token_list = [
             {
-                "exchangeType": 1, 
-                "tokens": ["3045", "2885"] 
+                "exchangeType": 1, # NSE Equity
+                "tokens": active_tokens
             }
         ]
-        
-        self.sws.subscribe(self.correlation_id, mode, token_list)
 
+        # 3. Send the subscription request
+        self.sws.subscribe(self.correlation_id, mode, token_list)
+        logger.info(f"Successfully subscribed to {len(active_tokens)} stocks.")
     def _on_error(self, wsapp, error):
         logger.error(f"WebSocket Error: {error}")
 
