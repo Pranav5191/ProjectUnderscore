@@ -95,23 +95,23 @@ class PreMarketScreener:
         target_universe = self.surviving_equities[:10]
         print(f"\n[TEST MODE] Running sanity check on {len(target_universe)} symbols...")
         
-        # for equity in self.surviving_equities:
-        #     count += 1
-        #     token = equity['token']
-        #     symbol = equity['symbol']
-            
-        #     # Print progress every 100 symbols so you know the engine hasn't frozen
-        #     if count % 100 == 0:
-        #         print(f"[{count}/{len(self.surviving_equities)}] Scoring in progress...")
-                
-        #     volatility_pct = self.get_normalized_atr(token, symbol)
-        for count, equity in enumerate(target_universe, start=1):
+        for equity in self.surviving_equities:
+            count += 1
             token = equity['token']
             symbol = equity['symbol']
             
-            print(f"[{count}/{len(target_universe)}] Scoring {symbol}...")
-            
+            # Print progress every 100 symbols so you know the engine hasn't frozen
+            if count % 100 == 0:
+                print(f"[{count}/{len(self.surviving_equities)}] Scoring in progress...")
+                
             volatility_pct = self.get_normalized_atr(token, symbol)
+        # for count, equity in enumerate(target_universe, start=1):
+        #     token = equity['token']
+        #     symbol = equity['symbol']
+            
+        #     print(f"[{count}/{len(target_universe)}] Scoring {symbol}...")
+            
+        #     volatility_pct = self.get_normalized_atr(token, symbol)
             if volatility_pct > 0:
                 scored_symbols.append({
                     "symbol": symbol,
