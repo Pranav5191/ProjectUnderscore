@@ -1,4 +1,5 @@
-# """Strategy engine with risk management for live trading."""
+"""Strategy engine with risk management for live trading."""
+import sys
 import os
 import json
 import redis
@@ -17,12 +18,34 @@ from src.trading.indicators.atr import TickATR
 from src.trading.portfolio import PortfolioManager
 from src.trading.audit_logger import AuditLogger
 from src.trading.execution_client import ExecutionEngine
+from src.trading.execution_client import ExecutionEngine
+from src.scripts.aws_sync import AWSSync
 
 #risk components
 from src.trading.risk_manager import RiskManager
 
 #Log components
 from src.trading.audit_logger import setup_signal_logger
+
+
+# # Indicators
+# from indicators.spread import BidAskSpread
+# from indicators.obi import OrderBookImbalance
+# from indicators.cvd import CumulativeVolumeDelta
+# from indicators.wmp import WeightedMidPrice
+# from indicators.atr import TickATR
+
+# # Sandbox Components
+# from portfolio import PortfolioManager
+# from audit_logger import AuditLogger
+# from execution_client import ExecutionEngine
+# from scripts.aws_sync import AWSSync
+
+# #risk components
+# from risk_manager import RiskManager
+
+# #Log components
+# from audit_logger import setup_signal_logger
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(current_dir, "../../.env")
@@ -88,13 +111,9 @@ def main():
                 portfolio.save_state()
                 print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")
                 
-                # ==========================================
                 # THE CLOUD HANDOFF
-                # ==========================================
                 print("\n[SYSTEM] Commencing Cloud Handoff to AWS S3...")
-                import sys, os
                 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-                from scripts.aws_sync import AWSSync
                 
                 cloud_sync = AWSSync()
                 cloud_sync.upload_daily_logs()
@@ -163,7 +182,7 @@ def main():
                 if qty>0:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
                     #print(f"\n[SIGNAL CONFIRMED] Confidence: {confidence:.2f} | Dynamic Qty: {qty} | Trace: {trace_id}")
-                    status=engine.execute_paper_trade(tick, action='SELL', qty=5, trace_id=trace_id)
+                    status=engine.execute_paper_trade(tick, action='SELL', qty=qty, trace_id=trace_id)
                     signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: SELL | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
                 
             elif obi_score > 0.4 and cvd_score < -1000: #Bullish Absorption (BUY SIGNAL)
@@ -179,7 +198,7 @@ def main():
                 if(qty>0):
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
                     #print(f"\n[SIGNAL CONFIRMED] Confidence: {confidence:.2f} | Dynamic Qty: {qty} | Trace: {trace_id}")
-                    status = engine.execute_paper_trade(tick, action='BUY', qty=5, trace_id=trace_id)
+                    status = engine.execute_paper_trade(tick, action='BUY', qty=qty, trace_id=trace_id)
                     signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: BUY | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
 
 if __name__ == "__main__":
