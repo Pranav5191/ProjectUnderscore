@@ -117,7 +117,7 @@ class TelegramReporter:
     def backup_postgres(self) -> str:
         """Dumps the PostgreSQL database, gzips it, and returns the file path."""
         db_user = os.getenv("DB_USER")
-        db_pass = os.getenv("DB_PASSWORD")
+        db_pass = os.getenv("DB_PASS")
         db_name = os.getenv("DB_NAME")
         db_host = os.getenv("DB_HOST", "localhost")
         
