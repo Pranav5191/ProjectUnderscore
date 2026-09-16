@@ -2,9 +2,10 @@ import os
 import pyotp
 import requests
 import json
+import time
 from dotenv import load_dotenv
 from SmartApi import SmartConnect
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 
 # Load environment variables
 current_dir = os.path.dirname(os.path.abspath(__file__))
