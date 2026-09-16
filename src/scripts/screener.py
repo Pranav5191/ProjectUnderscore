@@ -17,7 +17,6 @@ class PreMarketScreener:
         # Change this line inside __init__:
         self.watchlist_path = os.path.join(current_dir, '../../target_ticks.json')
         self.api = self._authenticate()
-        self.f=self.fetch_master_contract_list()
 
     def _authenticate(self):
         """Silently authenticates with Angel One using PyOTP."""
@@ -69,7 +68,7 @@ class PreMarketScreener:
             
             print(f"[SUCCESS] Downloaded {len(data)} total instruments.")
             print(f"[SYSTEM] Liquidity Purge Complete. Surviving NSE Equities: {len(nse_equities)}")
-            return nse_equities
+            self.surviving_equities = nse_equities
             
         except Exception as e:
             print(f"[ERROR] Failed to fetch or parse master contract list: {e}")
