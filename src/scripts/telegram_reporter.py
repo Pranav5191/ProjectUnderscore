@@ -2,6 +2,7 @@ import os
 import csv
 import json
 import requests
+import subprocess
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -113,15 +114,48 @@ class TelegramReporter:
                     print(f"[ERROR] Telegram API rejected document: {response.text}")
             except Exception as e:
                 print(f"[ERROR] Document upload failed: {e}")
+    def backup_postgres(self) -> str:
+        """Dumps the PostgreSQL database, gzips it, and returns the file path."""
+        db_user = os.getenv("DB_USER")
+        db_pass = os.getenv("DB_PASSWORD")
+        db_name = os.getenv("DB_NAME")
+        db_host = os.getenv("DB_HOST", "localhost")
+        
+        if not all([db_user, db_pass, db_name]):
+            print("[WARNING] DB credentials missing in .env. Skipping DB backup.")
+            return None
+
+        dump_filename = f"{db_name}_backup_{self.today_str}.sql.gz"
+        dump_path = os.path.join(self.base_dir, dump_filename)
+        
+        # Securely pass the password to the subprocess environment
+        env = os.environ.copy()
+        env["PGPASSWORD"] = db_pass
+        
+        # pg_dump piped directly into gzip to bypass Telegram's 50MB limit
+        command = f"pg_dump -h {db_host} -U {db_user} -d {db_name} | gzip > {dump_path}"
+        
+        print(f"[SYSTEM] Initiating PostgreSQL dump for '{db_name}'...")
+        try:
+            subprocess.run(command, shell=True, env=env, check=True)
+            print(f"[SUCCESS] Database compressed to {dump_filename}")
+            return dump_path
+        except subprocess.CalledProcessError as e:
+            print(f"[ERROR] PostgreSQL dump failed: {e}")
+            return None
+        
 if __name__ == "__main__":
     reporter = TelegramReporter()
     
-    # 1. Send the quantitative summary text
+    # 1. Send the text report
     reporter.send_report()
     
-    # 2. Attach the raw files directly from the server disk
+    # 2. Attach CSV and Logs
     reporter.send_file(reporter.csv_path)
-    
-    # Construct the path for the log file and send it
     log_path = os.path.join(reporter.base_dir, "logs", f"signals_{reporter.today_str}.log")
     reporter.send_file(log_path)
+    
+    # 3. Dump, compress, and send the PostgreSQL Database
+    db_dump_path = reporter.backup_postgres()
+    if db_dump_path:
+        reporter.send_file(db_dump_path)
