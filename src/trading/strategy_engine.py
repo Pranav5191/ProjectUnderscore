@@ -26,6 +26,8 @@ from src.trading.risk_manager import RiskManager
 
 #Log components
 from src.trading.audit_logger import setup_signal_logger
+from src.scripts.telegram_reporter import TelegramReporter
+from src.scripts.aws_sync import AWSSync
 
 
 # # Indicators
@@ -112,15 +114,33 @@ def main():
                 print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")
                 
                 # THE CLOUD HANDOFF
+                # THE CLOUD HANDOFF (Already exists)
                 print("\n[SYSTEM] Commencing Cloud Handoff to AWS S3...")
-                sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-                
                 cloud_sync = AWSSync()
                 cloud_sync.upload_daily_logs()
 
+                # ==========================================
+                # THE TELEGRAM & POSTGRES BACKUP HANDOFF
+                # ==========================================
+                print("\n[SYSTEM] Generating End-of-Day Telegram Report and DB Backup...")
+                
+                reporter = TelegramReporter()
+                
+                # 1. Send the text summary
+                reporter.send_report()
+                
+                # 2. Send the CSV and log files
+                reporter.send_file(reporter.csv_path)
+                log_path = os.path.join(reporter.base_dir, "logs", f"signals_{reporter.today_str}.log")
+                reporter.send_file(log_path)
+                
+                # 3. Dump the PostgreSQL DB, zip it, and send it
+                db_dump = reporter.backup_postgres()
+                if db_dump:
+                    reporter.send_file(db_dump)
+
                 print("\n[SYSTEM TERMINATED] All intraday positions flat and data secured. Shutting down.")
-                print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")
-                break  # This permanently breaks the Redis listening loop, stopping the engine
+                break # This permanently breaks the Redis listening loop, stopping the engine
             
             # =================================================================
             # 2. UPDATE INDICATOR MATH
