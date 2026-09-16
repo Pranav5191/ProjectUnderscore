@@ -82,18 +82,26 @@ class PreMarketScreener:
         
         scored_symbols = []
         count = 0
+        target_universe = self.surviving_equities[:10]
+        print(f"\n[TEST MODE] Running sanity check on {len(target_universe)} symbols...")
         
-        for equity in self.surviving_equities:
-            count += 1
+        # for equity in self.surviving_equities:
+        #     count += 1
+        #     token = equity['token']
+        #     symbol = equity['symbol']
+            
+        #     # Print progress every 100 symbols so you know the engine hasn't frozen
+        #     if count % 100 == 0:
+        #         print(f"[{count}/{len(self.surviving_equities)}] Scoring in progress...")
+                
+        #     volatility_pct = self.get_normalized_atr(token, symbol)
+        for count, equity in enumerate(target_universe, start=1):
             token = equity['token']
             symbol = equity['symbol']
             
-            # Print progress every 100 symbols so you know the engine hasn't frozen
-            if count % 100 == 0:
-                print(f"[{count}/{len(self.surviving_equities)}] Scoring in progress...")
-                
-            volatility_pct = self.get_normalized_atr(token, symbol)
+            print(f"[{count}/{len(target_universe)}] Scoring {symbol}...")
             
+            volatility_pct = self.get_normalized_atr(token, symbol)
             if volatility_pct > 0:
                 scored_symbols.append({
                     "symbol": symbol,
@@ -112,6 +120,16 @@ class PreMarketScreener:
             json.dump(final_watchlist, f, indent=4)
             
         print(f"\n[SUCCESS] Screener Complete. Top {self.top_n} hyper-active assets written to watchlist.json.")
+
+        #Telegram sender
+        try:
+            print("[SYSTEM] Executing Telegram pre-market dispatch...")
+            # Import dynamically to avoid circular dependencies
+            from src.scripts.telegram_reporter import TelegramReporter 
+            reporter = TelegramReporter()
+            reporter.send_premarket_watchlist(self.watchlist_path)
+        except Exception as e:
+            print(f"[ERROR] Telegram handoff crashed: {e}")
     def get_normalized_atr(self, token: str, symbol: str) -> float:
         """
         Fetches daily candles, calculates 14-day ATR, and normalizes it as a percentage of LTP.

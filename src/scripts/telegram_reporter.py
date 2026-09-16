@@ -143,7 +143,44 @@ class TelegramReporter:
         except subprocess.CalledProcessError as e:
             print(f"[ERROR] PostgreSQL dump failed: {e}")
             return None
+    def send_premarket_watchlist(self, json_path):
+        """Parses the generated watchlist and sends the top 5 + file to Telegram."""
+        import json
+        import requests
         
+        if not os.path.exists(json_path):
+            print(f"[ERROR] Watchlist file not found at {json_path}")
+            return
+            
+        try:
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+                
+            if not data:
+                print("[WARNING] Watchlist JSON is empty.")
+                return
+                
+            # Extract Top 5 and format text
+            top_5 = data[:5]
+            top_5_symbols = "\n".join([f"🎯 {idx+1}. {item['symbol']} (ATR: {item['volatility_pct']}%)" for idx, item in enumerate(top_5)])
+            
+            message = f"🌅 *Pre-Market Volatility Screener*\n\nTodays target ticks are:\n{top_5_symbols}"
+            
+            # Send the text summary
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            payload = {"chat_id": self.chat_id, "text": message, "parse_mode": "Markdown"}
+            
+            response = requests.post(url, json=payload)
+            if response.status_code == 200:
+                print("[SUCCESS] Pre-market Top 5 summary fired to Telegram.")
+            else:
+                print(f"[ERROR] Telegram text failed: {response.text}")
+                
+            # Send the actual JSON file using your existing method
+            self.send_file(json_path)
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to execute Telegram pre-market handoff: {e}")    
 if __name__ == "__main__":
     reporter = TelegramReporter()
     
