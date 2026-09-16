@@ -80,70 +80,67 @@ def main():
     signal_logger = setup_signal_logger()
     print("Signal Logger initialized. Silently logging to /logs directory...")
     print("Execution System Live. Listening for ticks and searching for setups...")
-    for message in pubsub.listen():
-        if message['type'] == 'message':
+    print("Execution System Live. Listening for ticks and searching for setups...")
+    
+    # NEW ARCHITECTURE: Non-blocking event loop
+    while True:
+        # =================================================================
+        # 1. THE 3:14 PM HARD KILL-SWITCH (EVALUATED EVERY SECOND)
+        # =================================================================
+        current_time = datetime.now().time()
+        cutoff_time = time(15, 14, 0) # 15:14:00 (3:14 PM)
+        
+        if current_time >= cutoff_time:
+            open_positions = list(portfolio.positions.items())
+            
+            if open_positions:
+                print("\n[SYSTEM ALERT] 3:14 PM Cutoff Reached. Initiating forced liquidation.")
+                for open_sec_id, pos_data in open_positions:
+                    pos_qty = pos_data['qty']
+                    side = pos_data['side']
+                    exit_action = 'SELL' if side == 'BUY' else 'BUY'
+                    trace_id = f"{open_sec_id}-SQUAREOFF-{uuid.uuid4().hex[:6]}"
+                    print(f"[LIQUIDATION] Force closing {side} position on #{open_sec_id}. Trace: {trace_id}")
+                    # Fire a dummy tick to force the execution client to process it
+                    dummy_tick = {'security_id': open_sec_id, 'ltp': pos_data['avg_price'], 'timestamp': datetime.now().isoformat()}
+                    engine.execute_paper_trade(dummy_tick, action=exit_action, qty=pos_qty, trace_id=trace_id)
+            
+            portfolio.save_state()
+            print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")
+            
+            # THE CLOUD & TELEGRAM HANDOFF
+            print("\n[SYSTEM] Commencing Cloud Handoff to AWS S3...")
+            from src.scripts.aws_sync import AWSSync
+            cloud_sync = AWSSync()
+            cloud_sync.upload_daily_logs()
+
+            print("\n[SYSTEM] Generating End-of-Day Telegram Report and DB Backup...")
+            from src.scripts.telegram_reporter import TelegramReporter
+            reporter = TelegramReporter()
+            reporter.send_report()
+            reporter.send_file(reporter.csv_path)
+            log_path = os.path.join(reporter.base_dir, "logs", f"signals_{reporter.today_str}.log")
+            reporter.send_file(log_path)
+            
+            db_dump = reporter.backup_postgres()
+            if db_dump:
+                reporter.send_file(db_dump)
+
+            print("\n[SYSTEM TERMINATED] All intraday positions flat and data secured. Shutting down.")
+            break  # Break the while loop
+        
+        # =================================================================
+        # 2. NON-BLOCKING REDIS FETCH (1 Second Timeout)
+        # =================================================================
+        message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+        
+        if message and message['type'] == 'message':
             tick = json.loads(message['data'])
             sec_id = tick.get('security_id')
             tick_ltp = tick.get('ltp', 0.0)
 
             # =================================================================
-            # 1. THE 3:14 PM HARD KILL-SWITCH (AUTO SQUARE-OFF PRECAUTION)
-            # =================================================================
-            current_time = datetime.now().time()
-            cutoff_time = time(15, 14, 0) # 15:14:00 (3:14 PM)
-            
-            if current_time >= cutoff_time:
-                open_positions = list(portfolio.positions.items())
-                
-                if open_positions:
-                    print("\n[SYSTEM ALERT] 3:14 PM Cutoff Reached. Initiating forced liquidation.")
-                    
-                    for open_sec_id, pos_data in open_positions:
-                        pos_qty = pos_data['qty']
-                        side = pos_data['side']
-                        
-                        # Reverse the action to close the trade
-                        exit_action = 'SELL' if side == 'BUY' else 'BUY'
-                        
-                        trace_id = f"{open_sec_id}-SQUAREOFF-{uuid.uuid4().hex[:6]}"
-                        print(f"[LIQUIDATION] Force closing {side} position on #{open_sec_id}. Trace: {trace_id}")
-                        
-                        # Fire the market order regardless of PnL
-                        engine.execute_paper_trade(tick, action=exit_action, qty=pos_qty, trace_id=trace_id)
-                portfolio.save_state()
-                print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")
-                
-                # THE CLOUD HANDOFF
-                # THE CLOUD HANDOFF (Already exists)
-                print("\n[SYSTEM] Commencing Cloud Handoff to AWS S3...")
-                cloud_sync = AWSSync()
-                cloud_sync.upload_daily_logs()
-
-                # ==========================================
-                # THE TELEGRAM & POSTGRES BACKUP HANDOFF
-                # ==========================================
-                print("\n[SYSTEM] Generating End-of-Day Telegram Report and DB Backup...")
-                
-                reporter = TelegramReporter()
-                
-                # 1. Send the text summary
-                reporter.send_report()
-                
-                # 2. Send the CSV and log files
-                reporter.send_file(reporter.csv_path)
-                log_path = os.path.join(reporter.base_dir, "logs", f"signals_{reporter.today_str}.log")
-                reporter.send_file(log_path)
-                
-                # 3. Dump the PostgreSQL DB, zip it, and send it
-                db_dump = reporter.backup_postgres()
-                if db_dump:
-                    reporter.send_file(db_dump)
-
-                print("\n[SYSTEM TERMINATED] All intraday positions flat and data secured. Shutting down.")
-                break # This permanently breaks the Redis listening loop, stopping the engine
-            
-            # =================================================================
-            # 2. UPDATE INDICATOR MATH
+            # 3. UPDATE INDICATOR MATH
             # =================================================================
             for ind in indicators:
                 ind.update(tick)
@@ -152,7 +149,7 @@ def main():
             cvd_score = cvd.get_score()
             
             # =================================================================
-            # 3. POSITION MANAGEMENT (DYNAMIC ATR SL/TP BANDS)
+            # 4. POSITION MANAGEMENT (DYNAMIC ATR SL/TP BANDS)
             # =================================================================
             current_pos = portfolio.positions.get(sec_id)
             if current_pos:
@@ -167,11 +164,9 @@ def main():
                     sl_price = entry_price - (atr_val * 1.5)
                     
                     if tick_ltp >= tp_price or tick_ltp <= sl_price:
-                        # Generate Trace ID for Exits
                         trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
                         reason = "TAKE PROFIT" if tick_ltp >= tp_price else "STOP LOSS"
                         print(f"\n[{reason}] Long on #{sec_id}. Exiting. Trace: {trace_id}")
-                        
                         engine.execute_paper_trade(tick, action='SELL', qty=pos_qty, trace_id=trace_id)
                         continue
                         
@@ -180,47 +175,36 @@ def main():
                     sl_price = entry_price + (atr_val * 1.5)
                     
                     if tick_ltp <= tp_price or tick_ltp >= sl_price:
-                        # Generate Trace ID for Exits
                         trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
                         reason = "TAKE PROFIT" if tick_ltp <= tp_price else "STOP LOSS"
                         print(f"\n[{reason}] Short on #{sec_id}. Exiting. Trace: {trace_id}")
-                        
                         engine.execute_paper_trade(tick, action='BUY', qty=pos_qty, trace_id=trace_id)
                         continue
 
             # =================================================================
-            # 4. ENTRY STRATEGY LOGIC 
+            # 5. ENTRY STRATEGY LOGIC 
             # =================================================================
-            if obi_score < -0.4 and cvd_score > 1000: # Bearish Absorption (SELL SIGNAL)
-                # Calculating Confidence
+            if obi_score < -0.4 and cvd_score > 1000:
                 confidence = risk_manager.calculate_confidence(obi_score, cvd_score, spread.get_score())
-                #Get free cash
                 margin_used = sum(pos['qty'] * pos['avg_price'] for pos in portfolio.positions.values())
                 free_cash = portfolio.current_balance - margin_used
-                #Calculate quantity
                 qty = risk_manager.calculate_position_size(confidence, free_cash, tick_ltp, tick.get('best_bid_vol', 0))
-                if qty>0:
+                
+                if qty > 0:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
-                    #print(f"\n[SIGNAL CONFIRMED] Confidence: {confidence:.2f} | Dynamic Qty: {qty} | Trace: {trace_id}")
-                    status=engine.execute_paper_trade(tick, action='SELL', qty=qty, trace_id=trace_id)
+                    status = engine.execute_paper_trade(tick, action='SELL', qty=qty, trace_id=trace_id)
                     signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: SELL | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
                 
-            elif obi_score > 0.4 and cvd_score < -1000: #Bullish Absorption (BUY SIGNAL)
-                #calculate confidence
+            elif obi_score > 0.4 and cvd_score < -1000:
                 confidence = risk_manager.calculate_confidence(obi_score, cvd_score, spread.get_score())
-                #calculate free cash
                 margin_used = sum(pos['qty'] * pos['avg_price'] for pos in portfolio.positions.values())
                 free_cash = portfolio.current_balance - margin_used
-                #calculate quantity
-                qty = risk_manager.calculate_position_size(
-                    confidence, free_cash, tick_ltp, tick.get('best_ask_vol', 0)
-                )
-                if(qty>0):
+                qty = risk_manager.calculate_position_size(confidence, free_cash, tick_ltp, tick.get('best_ask_vol', 0))
+                
+                if qty > 0:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
-                    #print(f"\n[SIGNAL CONFIRMED] Confidence: {confidence:.2f} | Dynamic Qty: {qty} | Trace: {trace_id}")
                     status = engine.execute_paper_trade(tick, action='BUY', qty=qty, trace_id=trace_id)
                     signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: BUY | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
-
 if __name__ == "__main__":
     main()
 
