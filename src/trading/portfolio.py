@@ -2,33 +2,32 @@ import json
 import os
 
 class PortfolioManager:
-    def __init__(self):
-            
-class PortfolioManager:
     def __init__(self, starting_balance: float, max_allocation_pct: float, max_loss_pct: float, state_file="portfolio_state.json"):
         self.state_file = os.path.join(os.path.dirname(__file__), state_file)
-        self.current_balance = self._load_state()
+        
+        # 1. Load the state first
+        loaded_balance = self._load_state(starting_balance)
+        
+        # 2. Set BOTH balances to the loaded state to track today's drawdown accurately
+        self.initial_balance = loaded_balance 
+        self.current_balance = loaded_balance
+        
+        self.max_allocation_pct = max_allocation_pct
+        self.max_loss_pct = max_loss_pct
         self.positions = {}
         self.daily_pnl = 0.0
 
-    def _load_state(self) -> float:
-        """Loads the persistent balance from the disk, defaults to 100k if fresh."""
+    def _load_state(self, default_balance: float) -> float:
         if os.path.exists(self.state_file):
             with open(self.state_file, 'r') as f:
                 data = json.load(f)
-                return data.get("current_balance", 100000.0)
-        return 100000.0
+                return data.get("current_balance", default_balance)
+        return default_balance
 
     def save_state(self):
         """Serializes the current balance to the disk."""
         with open(self.state_file, 'w') as f:
             json.dump({"current_balance": self.current_balance}, f)
-        self.initial_balance = starting_balance
-        self.current_balance = starting_balance
-        self.max_allocation_pct = max_allocation_pct
-        self.max_loss_pct = max_loss_pct
-        self.positions = {}  # {sec_id: {'side': 'BUY'/'SELL', 'qty': int, 'avg_price': float}}
-        self.daily_pnl = 0.0
 
     def can_take_trade(self, sec_id: int, action: str, requested_margin: float) -> bool:
         if self.daily_pnl <= -(self.initial_balance * self.max_loss_pct):
