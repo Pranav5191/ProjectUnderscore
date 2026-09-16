@@ -1,5 +1,28 @@
+import json
+import os
+
 class PortfolioManager:
-    def __init__(self, starting_balance: float, max_allocation_pct: float, max_loss_pct: float):
+    def __init__(self):
+            
+class PortfolioManager:
+    def __init__(self, starting_balance: float, max_allocation_pct: float, max_loss_pct: float, state_file="portfolio_state.json"):
+        self.state_file = os.path.join(os.path.dirname(__file__), state_file)
+        self.current_balance = self._load_state()
+        self.positions = {}
+        self.daily_pnl = 0.0
+
+    def _load_state(self) -> float:
+        """Loads the persistent balance from the disk, defaults to 100k if fresh."""
+        if os.path.exists(self.state_file):
+            with open(self.state_file, 'r') as f:
+                data = json.load(f)
+                return data.get("current_balance", 100000.0)
+        return 100000.0
+
+    def save_state(self):
+        """Serializes the current balance to the disk."""
+        with open(self.state_file, 'w') as f:
+            json.dump({"current_balance": self.current_balance}, f)
         self.initial_balance = starting_balance
         self.current_balance = starting_balance
         self.max_allocation_pct = max_allocation_pct

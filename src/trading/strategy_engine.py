@@ -65,7 +65,7 @@ def main():
             # 1. THE 3:14 PM HARD KILL-SWITCH (AUTO SQUARE-OFF PRECAUTION)
             # =================================================================
             current_time = datetime.now().time()
-            cutoff_time = time(23, 14, 0) # 15:14:00 (3:14 PM)
+            cutoff_time = time(15, 14, 0) # 15:14:00 (3:14 PM)
             
             if current_time >= cutoff_time:
                 open_positions = list(portfolio.positions.items())
@@ -85,8 +85,22 @@ def main():
                         
                         # Fire the market order regardless of PnL
                         engine.execute_paper_trade(tick, action=exit_action, qty=pos_qty, trace_id=trace_id)
+                portfolio.save_state()
+                print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")
                 
-                print("\n[SYSTEM TERMINATED] All intraday positions flat. Shutting down engine for the day.")
+                # ==========================================
+                # THE CLOUD HANDOFF
+                # ==========================================
+                print("\n[SYSTEM] Commencing Cloud Handoff to AWS S3...")
+                import sys, os
+                sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+                from scripts.aws_sync import AWSSync
+                
+                cloud_sync = AWSSync()
+                cloud_sync.upload_daily_logs()
+
+                print("\n[SYSTEM TERMINATED] All intraday positions flat and data secured. Shutting down.")
+                print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")
                 break  # This permanently breaks the Redis listening loop, stopping the engine
             
             # =================================================================
