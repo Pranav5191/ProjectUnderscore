@@ -1,38 +1,39 @@
 import json
 import os
+
 class PortfolioManager:
-    def __init__(self, starting_balance: float, max_allocation_pct: float, state_file="portfolio_state.json", max_loss_pct=0.02):
-        self.starting_balance=starting_balance
+    def __init__(self, starting_balance: float, max_allocation_pct: float, max_loss_pct: float, state_file="portfolio_state.json"):
         self.state_file = os.path.join(os.path.dirname(__file__), state_file)
-        self.current_balance = self._load_state()
-        self.starting_balance = self.current_balance
+        
+        # 1. Load the state first
+        loaded_balance = self._load_state(starting_balance)
+        
+        # 2. Set BOTH balances to the loaded state to track today's drawdown accurately
+        self.initial_balance = loaded_balance 
+        self.current_balance = loaded_balance
+        
+        self.max_allocation_pct = max_allocation_pct
         self.max_loss_pct = max_loss_pct
         self.positions = {}
         self.daily_pnl = 0.0
 
-    def _load_state(self) -> float:
-        """Loads the persistent balance from the disk, defaults to 100k if fresh."""
+    def _load_state(self, default_balance: float) -> float:
         if os.path.exists(self.state_file):
             with open(self.state_file, 'r') as f:
                 data = json.load(f)
-                return data.get("current_balance", 100000.0)
-        return 100000.0
+                return data.get("current_balance", default_balance)
+        return default_balance
 
     def save_state(self):
         """Serializes the current balance to the disk."""
         with open(self.state_file, 'w') as f:
             json.dump({"current_balance": self.current_balance}, f)
-        self.initial_balance = starting_balance
-        self.current_balance = starting_balance
-        self.max_allocation_pct = max_allocation_pct
-        self.max_loss_pct = max_loss_pct
-        self.positions = {}  # {sec_id: {'side': 'BUY'/'SELL', 'qty': int, 'avg_price': float}}
-        self.daily_pnl = 0.0
 
     def can_take_trade(self, sec_id: int, action: str, requested_margin: float) -> bool:
-        if self.daily_pnl <= -(self.starting_balance * self.max_loss_pct):
+        if self.daily_pnl <= -(self.initial_balance * self.max_loss_pct):
             print("[RISK LOCK] Max daily drawdown breached. Trading blocked.")
             return False
+            
         # Prevent pyramiding into the same direction continuously
         current_pos = self.positions.get(sec_id)
         if current_pos and current_pos['side'] == action:
@@ -40,6 +41,7 @@ class PortfolioManager:
 
         if requested_margin > (self.current_balance * self.max_allocation_pct):
             return False
+            
         return True
 
     def update_position(self, sec_id: int, action: str, qty: int, fill_price: float) -> float:
