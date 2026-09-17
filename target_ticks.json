@@ -1,0 +1,252 @@
+[
+    {
+        "symbol": "ATALREAL-EQ",
+        "token": "15649",
+        "volatility_pct": 16.79
+    },
+    {
+        "symbol": "WEL-EQ",
+        "token": "7835",
+        "volatility_pct": 14.62
+    },
+    {
+        "symbol": "SVGLOBAL-EQ",
+        "token": "764940",
+        "volatility_pct": 12.94
+    },
+    {
+        "symbol": "SRGHFL-EQ",
+        "token": "18119",
+        "volatility_pct": 12.52
+    },
+    {
+        "symbol": "SUNSHINE-EQ",
+        "token": "765387",
+        "volatility_pct": 12.25
+    },
+    {
+        "symbol": "MERCANTILE-EQ",
+        "token": "762792",
+        "volatility_pct": 12.08
+    },
+    {
+        "symbol": "DUCON-EQ",
+        "token": "28952",
+        "volatility_pct": 12.07
+    },
+    {
+        "symbol": "MEDICAPQ-EQ",
+        "token": "765110",
+        "volatility_pct": 11.87
+    },
+    {
+        "symbol": "DCI-EQ",
+        "token": "11566",
+        "volatility_pct": 11.78
+    },
+    {
+        "symbol": "ODYCORP-EQ",
+        "token": "764803",
+        "volatility_pct": 11.62
+    },
+    {
+        "symbol": "SUVIDHAA-EQ",
+        "token": "2998",
+        "volatility_pct": 11.59
+    },
+    {
+        "symbol": "DHATRE-EQ",
+        "token": "765060",
+        "volatility_pct": 11.59
+    },
+    {
+        "symbol": "LCCINFOTEC-EQ",
+        "token": "7529",
+        "volatility_pct": 11.16
+    },
+    {
+        "symbol": "UMESLTD-EQ",
+        "token": "19142",
+        "volatility_pct": 11.13
+    },
+    {
+        "symbol": "MOHITE-EQ",
+        "token": "765130",
+        "volatility_pct": 11.07
+    },
+    {
+        "symbol": "ANSALBU-EQ",
+        "token": "765020",
+        "volatility_pct": 10.8
+    },
+    {
+        "symbol": "MVELECTRO-EQ",
+        "token": "764397",
+        "volatility_pct": 10.63
+    },
+    {
+        "symbol": "PKTEA-EQ",
+        "token": "10321",
+        "volatility_pct": 10.47
+    },
+    {
+        "symbol": "OPTIFIN-EQ",
+        "token": "764813",
+        "volatility_pct": 10.32
+    },
+    {
+        "symbol": "IPRINGLTD-EQ",
+        "token": "764713",
+        "volatility_pct": 10.17
+    },
+    {
+        "symbol": "SECMARK-EQ",
+        "token": "19496",
+        "volatility_pct": 10.16
+    },
+    {
+        "symbol": "MONEYBOXX-EQ",
+        "token": "759381",
+        "volatility_pct": 9.97
+    },
+    {
+        "symbol": "JINDWORLD-EQ",
+        "token": "20642",
+        "volatility_pct": 9.95
+    },
+    {
+        "symbol": "LADDERUP-EQ",
+        "token": "764758",
+        "volatility_pct": 9.94
+    },
+    {
+        "symbol": "TERAI-EQ",
+        "token": "764950",
+        "volatility_pct": 9.9
+    },
+    {
+        "symbol": "CORDSCABLE-EQ",
+        "token": "15271",
+        "volatility_pct": 9.82
+    },
+    {
+        "symbol": "MOLBIO-EQ",
+        "token": "764548",
+        "volatility_pct": 9.81
+    },
+    {
+        "symbol": "STLSTRINF-EQ",
+        "token": "765170",
+        "volatility_pct": 9.71
+    },
+    {
+        "symbol": "PARNAXLAB-EQ",
+        "token": "764833",
+        "volatility_pct": 9.67
+    },
+    {
+        "symbol": "ASIANTNE-EQ",
+        "token": "765025",
+        "volatility_pct": 9.61
+    },
+    {
+        "symbol": "PAVNAIND-EQ",
+        "token": "16192",
+        "volatility_pct": 9.56
+    },
+    {
+        "symbol": "NKIND-EQ",
+        "token": "2439",
+        "volatility_pct": 9.53
+    },
+    {
+        "symbol": "SBGLP-EQ",
+        "token": "14139",
+        "volatility_pct": 9.51
+    },
+    {
+        "symbol": "ALOKINDS-EQ",
+        "token": "17675",
+        "volatility_pct": 9.45
+    },
+    {
+        "symbol": "VTMLTD-EQ",
+        "token": "765220",
+        "volatility_pct": 9.45
+    },
+    {
+        "symbol": "ADDIND-EQ",
+        "token": "764563",
+        "volatility_pct": 9.37
+    },
+    {
+        "symbol": "IFCI-EQ",
+        "token": "1491",
+        "volatility_pct": 9.36
+    },
+    {
+        "symbol": "XTRANET-EQ",
+        "token": "764312",
+        "volatility_pct": 9.3
+    },
+    {
+        "symbol": "TCC-EQ",
+        "token": "761814",
+        "volatility_pct": 9.29
+    },
+    {
+        "symbol": "HAMPTON-EQ",
+        "token": "765075",
+        "volatility_pct": 9.29
+    },
+    {
+        "symbol": "ANMOL-EQ",
+        "token": "3727",
+        "volatility_pct": 9.21
+    },
+    {
+        "symbol": "AEROENTER-EQ",
+        "token": "12015",
+        "volatility_pct": 9.13
+    },
+    {
+        "symbol": "NEXTMEDIA-EQ",
+        "token": "9867",
+        "volatility_pct": 9.11
+    },
+    {
+        "symbol": "PANORAMA-EQ",
+        "token": "765140",
+        "volatility_pct": 8.97
+    },
+    {
+        "symbol": "AEPL-EQ",
+        "token": "761330",
+        "volatility_pct": 8.92
+    },
+    {
+        "symbol": "VEDAVAAG-EQ",
+        "token": "764980",
+        "volatility_pct": 8.9
+    },
+    {
+        "symbol": "SHRIKRISH-EQ",
+        "token": "762909",
+        "volatility_pct": 8.87
+    },
+    {
+        "symbol": "OMAXE-EQ",
+        "token": "14853",
+        "volatility_pct": 8.86
+    },
+    {
+        "symbol": "SHANTI-EQ",
+        "token": "5650",
+        "volatility_pct": 8.77
+    },
+    {
+        "symbol": "AVROIND-EQ",
+        "token": "8827",
+        "volatility_pct": 8.74
+    }
+]
