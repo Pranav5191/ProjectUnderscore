@@ -80,7 +80,6 @@ def main():
     signal_logger = setup_signal_logger()
     print("Signal Logger initialized. Silently logging to /logs directory...")
     print("Execution System Live. Listening for ticks and searching for setups...")
-    print("Execution System Live. Listening for ticks and searching for setups...")
     
     # NEW ARCHITECTURE: Non-blocking event loop
     while True:
@@ -96,14 +95,30 @@ def main():
             if open_positions:
                 print("\n[SYSTEM ALERT] 3:14 PM Cutoff Reached. Initiating forced liquidation.")
                 for open_sec_id, pos_data in open_positions:
-                    pos_qty = pos_data['qty']
-                    side = pos_data['side']
-                    exit_action = 'SELL' if side == 'BUY' else 'BUY'
-                    trace_id = f"{open_sec_id}-SQUAREOFF-{uuid.uuid4().hex[:6]}"
-                    print(f"[LIQUIDATION] Force closing {side} position on #{open_sec_id}. Trace: {trace_id}")
-                    # Fire a dummy tick to force the execution client to process it
-                    dummy_tick = {'security_id': open_sec_id, 'ltp': pos_data['avg_price'], 'timestamp': datetime.now().isoformat()}
-                    engine.execute_paper_trade(dummy_tick, action=exit_action, qty=pos_qty, trace_id=trace_id)
+                    try:
+                        pos_qty = pos_data['qty']
+                        side = pos_data['side']
+                        exit_action = 'SELL' if side == 'BUY' else 'BUY'
+                        trace_id = f"{open_sec_id}-SQUAREOFF-{uuid.uuid4().hex[:6]}"
+                        print(f"[LIQUIDATION] Force closing {side} position on #{open_sec_id}. Trace: {trace_id}")
+                        
+                        # Extract a safe fallback price
+                        price = pos_data.get('avg_price') or 1.0
+                        
+                        # Fire a dummy tick with complete fallback keys for the execution client
+                        dummy_tick = {
+                            'security_id': open_sec_id, 
+                            'ltp': price,
+                            'price': price,
+                            'ask': price,
+                            'bid': price,
+                            'best_ask_vol': pos_qty,
+                            'best_bid_vol': pos_qty,
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        engine.execute_paper_trade(dummy_tick, action=exit_action, qty=pos_qty, trace_id=trace_id)
+                    except Exception as e:
+                        print(f"[ERROR] Failed squaring off position {open_sec_id}. Reason: {e}")
             
             portfolio.save_state()
             print(f"[STATE SAVED] Final Portfolio Balance: ₹{portfolio.current_balance:.2f} written to disk.")

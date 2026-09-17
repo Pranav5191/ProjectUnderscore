@@ -88,12 +88,11 @@ class PreMarketScreener:
     def generate_watchlist(self):
         """Ranks symbols by normalized volatility and generates the JSON handoff file."""
         print(f"\n[SYSTEM] Calculating Volatility for {len(self.surviving_equities)} Equities...")
-        print("[WARNING] This will take approximately 15 minutes due to strict API rate limits. Do not terminate.")
         
         scored_symbols = []
         count = 0
-        target_universe = self.surviving_equities[:10]
-        print(f"\n[TEST MODE] Running sanity check on {len(target_universe)} symbols...")
+        # target_universe = self.surviving_equities[:10]
+        print(f"\n[TEST MODE] Running sanity check on {len(self.surviving_equities)} symbols...")
         
         for equity in self.surviving_equities:
             count += 1
