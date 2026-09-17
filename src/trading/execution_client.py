@@ -13,8 +13,17 @@ class ExecutionEngine:
     def execute_paper_trade(self, tick: dict, action: str, qty: int, trace_id: str = "NO_TRACE") -> str:
         sec_id = tick.get('security_id')
         tick_timestamp = tick.get('timestamp')
-        estimated_price = tick.get('ask') if action == 'BUY' else tick.get('bid')
-        margin_required = estimated_price * qty
+        
+        # Robust Price Extraction: Fallback to ltp or price if ask/bid are missing
+        estimated_price = (
+            tick.get('ask') if action == 'BUY' else tick.get('bid')
+        ) or tick.get('ltp') or tick.get('price') or 0.0
+
+        if not estimated_price or estimated_price <= 0:
+            print(f"[EXECUTION WARNING] Invalid estimated_price ({estimated_price}) for {trace_id}. Skipping trade.")
+            return "REJECTED_INVALID_PRICE"
+
+        margin_required = float(estimated_price) * qty
 
         # ==========================================
         # GATE 1: Pyramiding / Duplicate Order Check
@@ -43,7 +52,8 @@ class ExecutionEngine:
         import time
         time.sleep(self.simulated_latency)
 
-        best_vol = tick.get('best_ask_vol') if action == 'BUY' else tick.get('best_bid_vol')
+        # Robust Volume Extraction for slippage calculation
+        best_vol = (tick.get('best_ask_vol') if action == 'BUY' else tick.get('best_bid_vol')) or qty
         slippage = 0.05 if qty > best_vol else 0.0
         fill_price = estimated_price + slippage if action == 'BUY' else estimated_price - slippage
 
