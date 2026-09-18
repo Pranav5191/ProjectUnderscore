@@ -41,7 +41,7 @@ class MasterIngester:
                 return (last_date + timedelta(days=1)).strftime('%Y-%m-%d 09:15')
             
             # FIXED: Pulled 260 days to satisfy the 252-day screener guardrail (padding for holidays)
-            return (datetime.now() - timedelta(days=260)).strftime('%Y-%m-%d 09:15')
+            return (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d 09:15')
 
     def sync_database(self, surviving_equities: list):
         """
@@ -79,7 +79,7 @@ class MasterIngester:
             for attempt in range(max_retries):
                 try:
                     response = self.api.getCandleData(payload)
-                    time.sleep(0.45) 
+                    time.sleep(1) 
                     
                     if response and not response.get('status'):
                         error_msg = response.get('message', '').lower()

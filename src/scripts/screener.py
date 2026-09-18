@@ -114,22 +114,38 @@ class MasterScreener:
     def evaluate_stock(self, token: str, symbol: str) -> dict:
         df = self.fetch_data(token)
         
-        if len(df) < 252:
+        # Ensure you keep your 150 or 252 guardrail here depending on your current DB state
+        if len(df) < 252: 
             return {"symbol": symbol, "token": token, "master_score": 0.0, "status": "Insufficient Data"}
 
-        category_scores = {}
-        for category, scorer_list in self.scorers.items():
-            scores = [scorer.calculate(df) for scorer in scorer_list]
-            category_scores[category] = sum(scores) / len(scores) if scores else 0.0
-            
-        master_score = sum(category_scores[cat] * weight for cat, weight in self.category_weights.items())
-            
-        return {
+        output = {
             "symbol": symbol,
-            "token": token,
-            "master_score": round(master_score, 4),
-            "breakdown": category_scores
+            "token": token
         }
+        
+        category_scores = {}
+        
+        # 1. Calculate individual scores and category averages
+        for category, scorer_list in self.scorers.items():
+            scores = []
+            for scorer in scorer_list:
+                val = scorer.calculate(df)
+                scores.append(val)
+                
+                # Dynamically write each of the 19 attributes as a separate column
+                output[scorer.__class__.__name__] = round(val, 4)
+                
+            cat_avg = sum(scores) / len(scores) if scores else 0.0
+            category_scores[category] = cat_avg
+            
+            # Write the macro-category score (e.g., CAT_VOLATILITY)
+            output[f"CAT_{category.upper()}"] = round(cat_avg, 4)
+            
+        # 2. Apply Ensemble Weighting
+        master_score = sum(category_scores[cat] * weight for cat, weight in self.category_weights.items())
+        output["master_score"] = round(master_score, 4)
+            
+        return output
 
     def run_screener(self, stock_list: List[Dict[str, str]], batch_size: int = 500) -> pd.DataFrame:
         results = []
@@ -259,6 +275,7 @@ class PreMarketOrchestrator:
         try:
             print("--> [SYSTEM] Executing Telegram pre-market dispatch...")
             reporter = TelegramReporter()
+            reporter.send_file(self.csv_path)
             reporter.send_premarket_watchlist(self.watchlist_path)
             print("--> [SUCCESS] Telegram dispatch complete.")
         except Exception as e:
