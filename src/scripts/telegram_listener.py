@@ -51,6 +51,7 @@ async def csv_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     csv_path = os.path.join(base_dir, f"paper_trades_{today_str}.csv")
     
     if os.path.exists(csv_path):
+        await update.message.reply_text(f"Fetching paper trades for {today_str}...")
         with open(csv_path, 'rb') as doc:
             await update.message.reply_document(document=doc)
     else:
@@ -69,8 +70,8 @@ if __name__ == "__main__":
     # Map the /commands to their respective async functions
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("dashboard", dashboard_command))
-    app.add_handler(CommandHandler("log", log_command))
-    app.add_handler(CommandHandler("csv", csv_command))
+    app.add_handler(CommandHandler("logs", log_command))
+    app.add_handler(CommandHandler("trades", csv_command))
     
     print("[SUCCESS] Listener is active. Send /start to the bot.")
     
