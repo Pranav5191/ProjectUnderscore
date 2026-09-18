@@ -10,6 +10,6 @@ find /home/ubuntu/project_pipeline/src/trading/logs -mindepth 1 -mtime +1 -exec 
 find /home/ubuntu/project_pipeline/src/trading -maxdepth 1 -name "paper_trades_*.csv" -type f -mtime +1 -exec rm -f {} +
 
 # 3. Delete database rows older than 2 days
-docker exec alpha_postgres psql -U alpha_user -d alpha_market_data -c "DELETE FROM market_ticks WHERE timestamp < (EXTRACT(EPOCH FROM (NOW() - INTERVAL '2 days')) * 1000);"
+docker exec alpha_postgres psql -U alpha_user -d alpha_market_data -c "TRUNCATE TABLE market_ticks;"
 # 4. sql data backup
 find /home/ubuntu/project_pipeline/src/trading -maxdepth 1 -name "alpha_market_data_backup_*.sql.gz" -type f -mtime +0 -exec rm -f {} +
