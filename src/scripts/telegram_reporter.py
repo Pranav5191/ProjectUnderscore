@@ -162,7 +162,7 @@ class TelegramReporter:
                 
             # Extract Top 5 and format text
             top_5 = data[:5]
-            top_5_symbols = "\n".join([f"🎯 {idx+1}. {item['symbol']} (ATR: {item['volatility_pct']}%)" for idx, item in enumerate(top_5)])
+            top_5_symbols = "\n".join([f"🎯 {idx+1}. {item['symbol']} (ATR: {item['master_score']}%)" for idx, item in enumerate(top_5)])
             
             message = f"🌅 *Pre-Market Volatility Screener*\n\nTodays target ticks are:\n{top_5_symbols}"
             
