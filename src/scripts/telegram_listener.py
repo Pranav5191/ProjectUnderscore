@@ -14,7 +14,7 @@ base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "trading")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Answers the /start command with available options."""
-    await update.message.reply_text("🤖 **Trading Engine Listener Active**\nAvailable commands:\n/dashboard - Get current portfolio_state.json\n/logs - Get today's signal execution log file\n/trades - Get today's paper trades CSV", parse_mode="Markdown")
+    await update.message.reply_text("🤖Trading Engine Listener Active\nAvailable commands:\n/dashboard - Get current portfolio_state.json\n/logs - Get today's signal execution log file\n/trades - Get today's paper trades CSV")
 
 async def dashboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fetches the portfolio state."""
