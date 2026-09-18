@@ -13,8 +13,9 @@ class MasterIngester:
         """Creates the B-Tree optimized SQLite schema if it does not exist."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            # FIXED: Renamed to historical_data to match screener.py
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS daily_ohlcv (
+                CREATE TABLE IF NOT EXISTS historical_data (
                     token TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     timestamp DATE NOT NULL,
@@ -32,17 +33,15 @@ class MasterIngester:
         """Queries the database to determine the delta sync requirement."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT MAX(timestamp) FROM daily_ohlcv WHERE token = ?", (token,))
+            cursor.execute("SELECT MAX(timestamp) FROM historical_data WHERE token = ?", (token,))
             result = cursor.fetchone()[0]
             
             if result:
-                # Convert stored YYYY-MM-DD back to Angel One's required format
                 last_date = datetime.strptime(result, '%Y-%m-%d')
-                # Start fetching from the day after the last recorded timestamp
                 return (last_date + timedelta(days=1)).strftime('%Y-%m-%d 09:15')
             
-            # If no data exists, pull a hard 90-day historical window
-            return (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d 09:15')
+            # FIXED: Pulled 260 days to satisfy the 252-day screener guardrail (padding for holidays)
+            return (datetime.now() - timedelta(days=260)).strftime('%Y-%m-%d 09:15')
 
     def sync_database(self, surviving_equities: list):
         """
@@ -62,7 +61,6 @@ class MasterIngester:
             
             from_date = self._get_last_sync_date(token)
             
-            # Skip if already fully synced for today
             if datetime.strptime(from_date.split()[0], '%Y-%m-%d').date() > datetime.now().date():
                 continue
 
@@ -81,7 +79,7 @@ class MasterIngester:
             for attempt in range(max_retries):
                 try:
                     response = self.api.getCandleData(payload)
-                    time.sleep(0.45)  # The 2.2 req/sec Survival Throttle
+                    time.sleep(0.45) 
                     
                     if response and not response.get('status'):
                         error_msg = response.get('message', '').lower()
@@ -93,28 +91,24 @@ class MasterIngester:
                     data = response.get('data') if response else None
                     if data:
                         for row in data:
-                            # Angel One Array: [timestamp, open, high, low, close, volume]
-                            timestamp_iso = row[0][:10]  # Extract YYYY-MM-DD
+                            timestamp_iso = row[0][:10]
                             staged_rows.append((
                                 token, symbol, timestamp_iso, 
                                 row[1], row[2], row[3], row[4], row[5]
                             ))
-                    break # Break retry loop on success
+                    break 
 
                 except Exception as e:
                     print(f"[API ERROR] {symbol} Fetch Failed: {e}")
                     time.sleep(1.0)
 
-        # =================================================================
-        # THE ATOMIC TRANSACTION
-        # =================================================================
         if staged_rows:
             print(f"\n[SYSTEM] Network Loop Complete. Executing Atomic Disk Write for {len(staged_rows)} rows...")
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
-                # INSERT OR REPLACE ensures overlapping delta days overwrite cleanly without crashing
+                # FIXED: Insert into historical_data
                 cursor.executemany("""
-                    INSERT OR REPLACE INTO daily_ohlcv 
+                    INSERT OR REPLACE INTO historical_data 
                     (token, symbol, timestamp, open, high, low, close, volume) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, staged_rows)
