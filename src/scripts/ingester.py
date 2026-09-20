@@ -41,7 +41,7 @@ class MasterIngester:
                 return (last_date + timedelta(days=1)).strftime('%Y-%m-%d 09:15')
             
             # FIXED: Pulled 260 days to satisfy the 252-day screener guardrail (padding for holidays)
-            return (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d 09:15')
+            return (datetime.now() - timedelta(days=500)).strftime('%Y-%m-%d 09:15')
 
     def sync_database(self, surviving_equities: list):
         """

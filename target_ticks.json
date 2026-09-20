@@ -1,0 +1,252 @@
+[
+    {
+        "symbol": "BLUSPRING-EQ",
+        "token": "757520",
+        "master_score": 0.887
+    },
+    {
+        "symbol": "SAIL-EQ",
+        "token": "2963",
+        "master_score": 0.8736
+    },
+    {
+        "symbol": "IDEA-EQ",
+        "token": "14366",
+        "master_score": 0.8597
+    },
+    {
+        "symbol": "PARACABLES-EQ",
+        "token": "13951",
+        "master_score": 0.8467
+    },
+    {
+        "symbol": "VERANDA-EQ",
+        "token": "8890",
+        "master_score": 0.8413
+    },
+    {
+        "symbol": "CONFIPET-EQ",
+        "token": "10238",
+        "master_score": 0.84
+    },
+    {
+        "symbol": "JINDRILL-EQ",
+        "token": "13875",
+        "master_score": 0.8387
+    },
+    {
+        "symbol": "BHEL-EQ",
+        "token": "438",
+        "master_score": 0.8375
+    },
+    {
+        "symbol": "GRWRHITECH-EQ",
+        "token": "7982",
+        "master_score": 0.835
+    },
+    {
+        "symbol": "POCL-EQ",
+        "token": "14385",
+        "master_score": 0.8347
+    },
+    {
+        "symbol": "BBOX-EQ",
+        "token": "3435",
+        "master_score": 0.8338
+    },
+    {
+        "symbol": "BIOCON-EQ",
+        "token": "11373",
+        "master_score": 0.8288
+    },
+    {
+        "symbol": "VEDL-EQ",
+        "token": "3063",
+        "master_score": 0.8255
+    },
+    {
+        "symbol": "SHAILY-EQ",
+        "token": "8727",
+        "master_score": 0.8254
+    },
+    {
+        "symbol": "WELCORP-EQ",
+        "token": "11821",
+        "master_score": 0.8241
+    },
+    {
+        "symbol": "LLOYDSENGG-EQ",
+        "token": "17801",
+        "master_score": 0.8235
+    },
+    {
+        "symbol": "BHAGYANGR-EQ",
+        "token": "20776",
+        "master_score": 0.8213
+    },
+    {
+        "symbol": "GVPIL-EQ",
+        "token": "7862",
+        "master_score": 0.8205
+    },
+    {
+        "symbol": "ADANIGREEN-EQ",
+        "token": "3563",
+        "master_score": 0.8168
+    },
+    {
+        "symbol": "RITCO-EQ",
+        "token": "8944",
+        "master_score": 0.8163
+    },
+    {
+        "symbol": "IDEAFORGE-EQ",
+        "token": "17140",
+        "master_score": 0.8153
+    },
+    {
+        "symbol": "RRKABEL-EQ",
+        "token": "18566",
+        "master_score": 0.8142
+    },
+    {
+        "symbol": "WHEELS-EQ",
+        "token": "3766",
+        "master_score": 0.8049
+    },
+    {
+        "symbol": "OMAXAUTO-EQ",
+        "token": "10922",
+        "master_score": 0.8041
+    },
+    {
+        "symbol": "STYLEBAAZA-EQ",
+        "token": "25114",
+        "master_score": 0.804
+    },
+    {
+        "symbol": "TALBROAUTO-EQ",
+        "token": "13648",
+        "master_score": 0.8001
+    },
+    {
+        "symbol": "MEGASTAR-EQ",
+        "token": "8153",
+        "master_score": 0.7991
+    },
+    {
+        "symbol": "STLNETWORK-EQ",
+        "token": "758958",
+        "master_score": 0.7981
+    },
+    {
+        "symbol": "MWL-EQ",
+        "token": "759169",
+        "master_score": 0.7979
+    },
+    {
+        "symbol": "NLCINDIA-EQ",
+        "token": "8585",
+        "master_score": 0.7974
+    },
+    {
+        "symbol": "HSCL-EQ",
+        "token": "14334",
+        "master_score": 0.7969
+    },
+    {
+        "symbol": "THERMAX-EQ",
+        "token": "3475",
+        "master_score": 0.7957
+    },
+    {
+        "symbol": "MIDHANI-EQ",
+        "token": "2463",
+        "master_score": 0.7936
+    },
+    {
+        "symbol": "SASKEN-EQ",
+        "token": "11983",
+        "master_score": 0.7934
+    },
+    {
+        "symbol": "BHARATWIRE-EQ",
+        "token": "16123",
+        "master_score": 0.7929
+    },
+    {
+        "symbol": "NINSYS-EQ",
+        "token": "14194",
+        "master_score": 0.7926
+    },
+    {
+        "symbol": "ACUTAAS-EQ",
+        "token": "5578",
+        "master_score": 0.7917
+    },
+    {
+        "symbol": "DATAPATTNS-EQ",
+        "token": "7358",
+        "master_score": 0.7916
+    },
+    {
+        "symbol": "ONIDA-EQ",
+        "token": "2202",
+        "master_score": 0.7906
+    },
+    {
+        "symbol": "IFCI-EQ",
+        "token": "1491",
+        "master_score": 0.7885
+    },
+    {
+        "symbol": "BAJAJCON-EQ",
+        "token": "19531",
+        "master_score": 0.7873
+    },
+    {
+        "symbol": "SUNFLAG-EQ",
+        "token": "3348",
+        "master_score": 0.7873
+    },
+    {
+        "symbol": "LAURUSLABS-EQ",
+        "token": "19234",
+        "master_score": 0.7867
+    },
+    {
+        "symbol": "ANTELOPUS-EQ",
+        "token": "13598",
+        "master_score": 0.7864
+    },
+    {
+        "symbol": "NRBBEARING-EQ",
+        "token": "7553",
+        "master_score": 0.7862
+    },
+    {
+        "symbol": "RATNAVEER-EQ",
+        "token": "18423",
+        "master_score": 0.7818
+    },
+    {
+        "symbol": "V2RETAIL-EQ",
+        "token": "14766",
+        "master_score": 0.7802
+    },
+    {
+        "symbol": "SATIN-EQ",
+        "token": "10453",
+        "master_score": 0.7789
+    },
+    {
+        "symbol": "INSPIRISYS-EQ",
+        "token": "13730",
+        "master_score": 0.7769
+    },
+    {
+        "symbol": "SURYODAY-EQ",
+        "token": "2970",
+        "master_score": 0.7755
+    }
+]

@@ -63,7 +63,8 @@ class AngelDataPipeline:
             # 1. Stream to Batch Writer (PostgreSQL persistence)
             self.redis_client.xadd(
                 "market:ticks",
-                {"payload": json.dumps(normalized_tick)}
+                {"payload": json.dumps(normalized_tick)},
+                maxlen=100000
             )
             
             # 2. Publish directly to Strategy Engine (Real-time quantitative analysis)
