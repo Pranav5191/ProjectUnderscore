@@ -10,14 +10,16 @@ class AuditLogger:
             with open(self.filepath, 'w', newline='') as f:
                 csv.writer(f).writerow([
                     'trace_id','tick_timestamp', 'exec_wall_time', 'security_id', 
-                    'action', 'fill_price', 'qty', 'latency_ms', 'slippage', 'booked_pnl', 'total_balance'
+                    'action', 'fill_price', 'qty', 'latency_ms', 'slippage', 
+                    'gross_pnl', 'transaction_taxes', 'net_pnl', 'total_balance'
                 ])
 
-    def log_trade(self, trace_id, tick_time, sec_id, action, price, qty, latency, slippage, pnl, balance):
+    def log_trade(self, trace_id, tick_time, sec_id, action, price, qty, latency, slippage, gross_pnl, taxes, net_pnl, balance):
         with open(self.filepath, 'a', newline='') as f:
             csv.writer(f).writerow([
                 trace_id, tick_time, datetime.now().isoformat(), sec_id, 
-                action, price, qty, latency, slippage, pnl, balance
+                action, price, qty, latency, slippage, 
+                round(gross_pnl, 2), round(taxes, 2), round(net_pnl, 2), round(balance, 2)
             ])
 
 def setup_signal_logger():

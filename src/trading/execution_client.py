@@ -96,11 +96,11 @@ class ExecutionEngine:
         # Log to your CSV Vault
         self.logger.log_trade(
             trace_id, tick_timestamp, sec_id, action, fill_price, qty, 
-            self.simulated_latency * 1000, slippage, net_booked_pnl, total_balance
+            self.simulated_latency * 1000, slippage, 
+            gross_booked_pnl, transaction_taxes, net_booked_pnl, total_balance
         )
 
         return "EXECUTED"
-        
 # import asyncio
 # from enum import Enum
 # from logzero import logger
