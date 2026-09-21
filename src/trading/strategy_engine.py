@@ -69,7 +69,7 @@ def main():
         # 1. THE 3:14 PM HARD KILL-SWITCH
         # =================================================================
         current_time = datetime.now().time()
-        cutoff_time = time(23, 59, 0) 
+        cutoff_time = time(15, 14, 0) 
         
         if current_time >= cutoff_time:
             open_positions = list(portfolio.positions.items())
