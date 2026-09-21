@@ -69,7 +69,7 @@ def main():
         # 1. THE 3:14 PM HARD KILL-SWITCH
         # =================================================================
         current_time = datetime.now().time()
-        cutoff_time = time(23, 14, 0) 
+        cutoff_time = time(23, 59, 0) 
         
         if current_time >= cutoff_time:
             open_positions = list(portfolio.positions.items())
@@ -186,8 +186,11 @@ def main():
             
             if atr.get_score(sec_id) == 0.0:
                 continue 
-            current_vwap = vwap.get_score(sec_id)
 
+            current_vwap = vwap.get_score(sec_id)
+            MIN_POSITION_VALUE = 5000.0  # Hardcoded tax survival barrier
+
+            # MACRO FILTER: Only SELL if price is historically weak (Below VWAP)
             if obi_score < -0.4 and cvd_score > 1000 and tick_ltp < current_vwap:
                 
                 if current_pos and current_pos['side'] == 'BUY':
@@ -196,7 +199,6 @@ def main():
                     engine.execute_paper_trade(tick, action='SELL', qty=current_pos['qty'], trace_id=trace_id)
                     continue 
                 
-                # PHASE 2 FIX: The Cooldown Guard
                 current_ts = datetime.now().timestamp()
                 if current_ts - last_trade_time.get(sec_id, 0.0) < COOLDOWN_SECONDS:
                     continue
@@ -206,13 +208,15 @@ def main():
                 free_cash = portfolio.current_balance - margin_used
                 qty = risk_manager.calculate_position_size(confidence, free_cash, tick_ltp, tick.get('best_bid_vol', 0))
                 
-                if qty > 0:
+                # THE HARD GATE: Ensure position value beats the flat fee
+                if qty > 0 and (qty * tick_ltp) >= MIN_POSITION_VALUE:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
                     status = engine.execute_paper_trade(tick, action='SELL', qty=qty, trace_id=trace_id)
                     signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: SELL | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
                     if status == "EXECUTED":
                         last_trade_time[sec_id] = current_ts
                 
+            # MACRO FILTER: Only BUY if price is historically strong (Above VWAP)
             elif obi_score > 0.4 and cvd_score < -1000 and tick_ltp > current_vwap:
                 
                 if current_pos and current_pos['side'] == 'SELL':
@@ -221,7 +225,6 @@ def main():
                     engine.execute_paper_trade(tick, action='BUY', qty=current_pos['qty'], trace_id=trace_id)
                     continue
 
-                # PHASE 2 FIX: The Cooldown Guard
                 current_ts = datetime.now().timestamp()
                 if current_ts - last_trade_time.get(sec_id, 0.0) < COOLDOWN_SECONDS:
                     continue
@@ -231,7 +234,8 @@ def main():
                 free_cash = portfolio.current_balance - margin_used
                 qty = risk_manager.calculate_position_size(confidence, free_cash, tick_ltp, tick.get('best_ask_vol', 0))
                 
-                if qty > 0:
+                # THE HARD GATE: Ensure position value beats the flat fee
+                if qty > 0 and (qty * tick_ltp) >= MIN_POSITION_VALUE:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
                     status = engine.execute_paper_trade(tick, action='BUY', qty=qty, trace_id=trace_id)
                     signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: BUY | Conf: {confidence:.2f} | Qty: {qty} | Status: {status}")
