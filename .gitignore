@@ -13,9 +13,14 @@ redis_data/
 # Market Data Dumps
 *.sql
 *.csv
+*.sql.gz
+*.json
 
 #previous mentioned
 venv314/
 *.log
 data/historical/
 data/profiling/
+
+#Locally usefull files
+*replayer.py

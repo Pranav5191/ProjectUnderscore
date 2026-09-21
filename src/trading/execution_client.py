@@ -1,14 +1,38 @@
 import time
 from src.trading.portfolio import PortfolioManager
 from src.trading.audit_logger import AuditLogger
-# from portfolio import PortfolioManager
-# from audit_logger import AuditLogger
 
 class ExecutionEngine:
     def __init__(self, portfolio: PortfolioManager, logger: AuditLogger):
         self.portfolio = portfolio
         self.logger = logger
         self.simulated_latency = 0.050 
+
+    def _calculate_indian_taxes(self, action: str, qty: int, price: float) -> float:
+        """Calculates exact Indian Equity Intraday taxes and dynamic brokerage."""
+        turnover = float(qty * price)
+        
+        # 1. Dynamic Brokerage: Min ₹5, Max ₹20, or 0.1% of turnover
+        calculated_brokerage = turnover * 0.001
+        brokerage = max(5.0, min(20.0, calculated_brokerage))
+        
+        # 2. Exchange Transaction Charge (NSE: ~0.0030699%)
+        exchange_txn_charge = turnover * 0.000030699
+        
+        # 3. SEBI Turnover Fee (₹10 per crore = 0.0001%)
+        sebi_fee = turnover * 0.000001
+        
+        # 4. GST (18% on Brokerage + Exchange Charge + SEBI Fee)
+        gst = (brokerage + exchange_txn_charge + sebi_fee) * 0.18
+        
+        # 5. STT (0.025% on the SELL side only for intraday equity)
+        stt = (turnover * 0.00025) if action == 'SELL' else 0.0
+        
+        # 6. Stamp Duty (0.003% on the BUY side only)
+        stamp_duty = (turnover * 0.00003) if action == 'BUY' else 0.0
+        
+        total_taxes = brokerage + exchange_txn_charge + sebi_fee + gst + stt + stamp_duty
+        return round(total_taxes, 2)
 
     def execute_paper_trade(self, tick: dict, action: str, qty: int, trace_id: str = "NO_TRACE") -> str:
         sec_id = tick.get('security_id')
@@ -49,7 +73,6 @@ class ExecutionEngine:
         # ==========================================
         # EXECUTION
         # ==========================================
-        import time
         time.sleep(self.simulated_latency)
 
         # Robust Volume Extraction for slippage calculation
@@ -57,14 +80,23 @@ class ExecutionEngine:
         slippage = 0.05 if qty > best_vol else 0.0
         fill_price = estimated_price + slippage if action == 'BUY' else estimated_price - slippage
 
-        # Update portfolio & calculate realized PnL
-        booked_pnl = self.portfolio.update_position(sec_id, action, qty, fill_price)
+        # Calculate exact Indian market taxes for this leg
+        transaction_taxes = self._calculate_indian_taxes(action, qty, fill_price)
+
+        # Update portfolio & calculate gross realized PnL
+        gross_booked_pnl = self.portfolio.update_position(sec_id, action, qty, fill_price)
+        
+        # Physically deduct taxes from the portfolio balance instantly
+        self.portfolio.current_balance -= transaction_taxes
+        
+        # Net PnL reflects the true cost of doing business
+        net_booked_pnl = gross_booked_pnl - transaction_taxes
         total_balance = self.portfolio.current_balance
 
         # Log to your CSV Vault
         self.logger.log_trade(
             trace_id, tick_timestamp, sec_id, action, fill_price, qty, 
-            self.simulated_latency * 1000, slippage, booked_pnl, total_balance
+            self.simulated_latency * 1000, slippage, net_booked_pnl, total_balance
         )
 
         return "EXECUTED"
