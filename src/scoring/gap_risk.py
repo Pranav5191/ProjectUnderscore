@@ -14,6 +14,8 @@ class GapRiskScorer(BaseScorer):
         if len(df) < self.period + 1:
             return 0.0
             
+        df = df.copy()
+            
         # 2. Vectorized True Range and Gap Magnitude
         df['prev_close'] = df['close'].shift(1)
         

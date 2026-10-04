@@ -11,6 +11,8 @@ class VolumePriceTrendScorer(BaseScorer):
         if len(df) < self.period + 1:
             return 0.5 # Neutral score if missing data
             
+        df = df.copy()
+            
         # 2. Vectorized Percentage Change
         df['prev_close'] = df['close'].shift(1)
         

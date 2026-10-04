@@ -15,6 +15,8 @@ class DistanceFromHighScorer(BaseScorer):
         if len(df) < self.period:
             return 0.0
             
+        df = df.copy()
+            
         # 2. Vectorized 52-Week High
         # We scan the 'high' column, not the 'close', because we care about the absolute peak.
         df['52w_high'] = df['high'].rolling(window=self.period).max()

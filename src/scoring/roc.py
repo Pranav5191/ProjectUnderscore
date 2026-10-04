@@ -14,6 +14,8 @@ class RateOfChangeScorer(BaseScorer):
         if len(df) < self.period + 1:
             return 0.5 
             
+        df = df.copy()
+            
         # 2. Vectorized Point A to Point B Math
         df['close_n_ago'] = df['close'].shift(self.period)
         
