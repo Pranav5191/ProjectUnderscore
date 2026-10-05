@@ -134,12 +134,12 @@ class DatabaseManager:
                 tick.get("best_ask_vol") or 0,
             	)
                 records.append(record)
-            except KeyError as exc:
-                logger.error(
-                    "Malformed tick data",
-                    extra={"index": i, "missing_field": str(exc), "tick": tick},
+            except (KeyError, TypeError, ValueError) as exc:
+                logger.warning(
+                    "Malformed tick data skipped",
+                    extra={"index": i, "error": str(exc), "tick": tick},
                 )
-                raise ValueError(f"Tick at index {i} missing required field: {exc}") from exc
+                continue
 
         try:
             async with self._pool.acquire() as conn:

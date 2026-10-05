@@ -13,7 +13,7 @@ def update():
         target_data = json.load(f)
 
     # Slice the first 12 items from the screener list
-    top_12 = target_data[:12]
+    top_12 = target_data[:15]
 
     # Extract ONLY the token strings from those 12 items
     token_list = [item["token"] for item in top_12]
