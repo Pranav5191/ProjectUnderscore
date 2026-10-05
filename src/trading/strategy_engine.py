@@ -257,7 +257,7 @@ def main():
             side = current_pos['side']
 
             # Fixed Percentage Risk Model: 1% Risk, 2% Reward
-            SL_PERCENT = 0.040
+            SL_PERCENT = 0.0400
             TP_PERCENT = 0.020
 
             if side == 'BUY':
