@@ -14,6 +14,8 @@ class NormalizedATRScorer(BaseScorer):
         if len(df) < self.period + 1:
             return 0.0 
             
+        df = df.copy()
+            
         # 2. Calculate the True Range for every single day
         df['prev_close'] = df['close'].shift(1)
         df['tr1'] = df['high'] - df['low']

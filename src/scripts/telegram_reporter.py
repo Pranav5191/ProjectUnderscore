@@ -28,12 +28,14 @@ class TelegramReporter:
         return 100000.0
 
     def parse_daily_metrics(self) -> dict:
-        """Parses the CSV to calculate wins, losses, and net PnL."""
+        """Parses the CSV to calculate true net wins, losses, taxes, and PnL."""
         metrics = {
             "total_executions": 0,
             "round_trips": 0,
             "winning_trades": 0,
             "losing_trades": 0,
+            "gross_pnl": 0.0,
+            "total_taxes": 0.0,
             "net_pnl": 0.0
         }
 
@@ -45,12 +47,20 @@ class TelegramReporter:
             for row in reader:
                 metrics["total_executions"] += 1
                 
-                # Booked PnL is only recorded when a position is closed
-                pnl = float(row.get('booked_pnl', 0.0))
-                if pnl != 0.0:
+                # Safely extract all three financial metrics
+                gross = float(row.get('gross_pnl', 0.0))
+                taxes = float(row.get('transaction_taxes', 0.0))
+                net = float(row.get('net_pnl', 0.0))
+                
+                # A trade is considered a "round trip" (closed) if it realized any gross PnL
+                if gross != 0.0:
                     metrics["round_trips"] += 1
-                    metrics["net_pnl"] += pnl
-                    if pnl > 0:
+                    metrics["gross_pnl"] += gross
+                    metrics["total_taxes"] += taxes
+                    metrics["net_pnl"] += net
+                    
+                    # True wins and losses must be calculated on the NET value
+                    if net > 0:
                         metrics["winning_trades"] += 1
                     else:
                         metrics["losing_trades"] += 1
@@ -71,12 +81,14 @@ class TelegramReporter:
                 f"📊 <b>EOD Quantitative Report | {datetime.now().strftime('%Y-%m-%d')}</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
                 f"🏦 <b>Final Balance:</b> ₹{final_balance:,.2f}\n"
-                f"💵 <b>Net Realized PnL:</b> ₹{metrics['net_pnl']:,.2f}\n"
+                f"🟢 <b>Gross PnL Made:</b> ₹{metrics['gross_pnl']:,.2f}\n"
+                f"🔴 <b>Paid as Taxes and Fees:</b> ₹{metrics['total_taxes']:,.2f}\n"
+                f"💵 <b>Net PnL:</b> ₹{metrics['net_pnl']:,.2f}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
                 f"⚡ <b>Total Executions:</b> {metrics['total_executions']}\n"
                 f"🔄 <b>Closed Trades:</b> {metrics['round_trips']}\n"
-                f"📈 <b>Win Rate:</b> {win_rate:.1f}%\n"
-                f"✅ <b>Wins:</b> {metrics['winning_trades']} | ❌ <b>Losses:</b> {metrics['losing_trades']}\n"
+                f"📈 <b>Net Win Rate:</b> {win_rate:.1f}%\n"
+                f"✅ <b>Net Wins:</b> {metrics['winning_trades']} | ❌ <b>Net Losses:</b> {metrics['losing_trades']}\n"
             )
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
@@ -88,13 +100,13 @@ class TelegramReporter:
         
         try:
             response = requests.post(url, json=payload)
-            # If it fails, print Telegram's exact JSON reason instead of throwing a generic python error
             if response.status_code != 200:
                 print(f"[ERROR] Telegram API rejected the request: {response.text}")
             else:
                 print("[SUCCESS] End-of-Day report fired to Telegram.")
         except Exception as e:
             print(f"[ERROR] Network failure: {e}")
+
     def send_file(self, file_path: str):
         """Pushes a file directly from the server to Telegram."""
         if not os.path.exists(file_path):
@@ -114,6 +126,7 @@ class TelegramReporter:
                     print(f"[ERROR] Telegram API rejected document: {response.text}")
             except Exception as e:
                 print(f"[ERROR] Document upload failed: {e}")
+
     def backup_postgres(self) -> str:
         """Dumps the PostgreSQL database, gzips it, and returns the file path."""
         db_user = os.getenv("DB_USER")
@@ -128,11 +141,9 @@ class TelegramReporter:
         dump_filename = f"{db_name}_backup_{self.today_str}.sql.gz"
         dump_path = os.path.join(self.base_dir, dump_filename)
         
-        # Securely pass the password to the subprocess environment
         env = os.environ.copy()
         env["PGPASSWORD"] = db_pass
         
-        # pg_dump piped directly into gzip to bypass Telegram's 50MB limit
         command = f"pg_dump -h {db_host} -U {db_user} -d {db_name} | gzip > {dump_path}"
         
         print(f"[SYSTEM] Initiating PostgreSQL dump for '{db_name}'...")
@@ -143,11 +154,9 @@ class TelegramReporter:
         except subprocess.CalledProcessError as e:
             print(f"[ERROR] PostgreSQL dump failed: {e}")
             return None
+
     def send_premarket_watchlist(self, json_path):
         """Parses the generated watchlist and sends the top 5 + file to Telegram."""
-        import json
-        import requests
-        
         if not os.path.exists(json_path):
             print(f"[ERROR] Watchlist file not found at {json_path}")
             return
@@ -160,13 +169,11 @@ class TelegramReporter:
                 print("[WARNING] Watchlist JSON is empty.")
                 return
                 
-            # Extract Top 5 and format text
             top_5 = data[:5]
             top_5_symbols = "\n".join([f"🎯 {idx+1}. {item['symbol']} (ATR: {item['master_score']}%)" for idx, item in enumerate(top_5)])
             
             message = f"🌅 *Pre-Market Volatility Screener*\n\nTodays target ticks are:\n{top_5_symbols}"
             
-            # Send the text summary
             url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
             payload = {"chat_id": self.chat_id, "text": message, "parse_mode": "Markdown"}
             
@@ -176,23 +183,17 @@ class TelegramReporter:
             else:
                 print(f"[ERROR] Telegram text failed: {response.text}")
                 
-            # Send the actual JSON file using your existing method
             self.send_file(json_path)
             
         except Exception as e:
             print(f"[ERROR] Failed to execute Telegram pre-market handoff: {e}")    
+
 if __name__ == "__main__":
     reporter = TelegramReporter()
-    
-    # 1. Send the text report
     reporter.send_report()
-    
-    # 2. Attach CSV and Logs
     reporter.send_file(reporter.csv_path)
     log_path = os.path.join(reporter.base_dir, "logs", f"signals_{reporter.today_str}.log")
     reporter.send_file(log_path)
-    
-    # 3. Dump, compress, and send the PostgreSQL Database
     db_dump_path = reporter.backup_postgres()
     if db_dump_path:
         reporter.send_file(db_dump_path)

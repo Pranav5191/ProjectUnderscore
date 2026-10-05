@@ -11,8 +11,15 @@ class RiskManager:
         # 2. Normalize CVD (Assuming 2000 delta is a 'maximum' benchmark)
         cvd_strength = min(abs(cvd) / 2000.0, 1.0)
         
-        # 3. Spread Penalty (If spread is tighter than 0.10 rupees, no penalty. Else, cut confidence in half)
-        spread_penalty = 1.0 if spread < 0.10 else 0.5
+        # 3. Spread Penalty (tiered: tight spread = full confidence, wide = reduced)
+        if spread < 0.002:      # < 0.2% spread — excellent liquidity
+            spread_penalty = 1.0
+        elif spread < 0.005:    # 0.2% - 0.5% — acceptable
+            spread_penalty = 0.8
+        elif spread < 0.01:     # 0.5% - 1.0% — cautious
+            spread_penalty = 0.5
+        else:                   # > 1.0% — illiquid, heavily penalize
+            spread_penalty = 0.2
         
         # Weighting: 60% Order Book, 40% Volume Delta
         confidence = ((obi_strength * 0.6) + (cvd_strength * 0.4)) * spread_penalty

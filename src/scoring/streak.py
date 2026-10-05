@@ -13,6 +13,8 @@ class ConsecutiveDaysStreakScorer(BaseScorer):
         if len(df) < 2:
             return 0.5 # Neutral if missing data
             
+        df = df.copy()
+            
         # 2. Vectorized Directionality
         # +1 for up days, -1 for down days, 0 for flat days
         delta = df['close'] - df['close'].shift(1)

@@ -29,7 +29,8 @@ class PortfolioManager:
         with open(self.state_file, 'w') as f:
             json.dump({"current_balance": self.current_balance}, f)
 
-    def can_take_trade(self, sec_id: int, action: str, requested_margin: float) -> bool:
+    def can_take_trade(self, sec_id, action: str, requested_margin: float) -> bool:
+        sec_id = str(sec_id)
         if self.daily_pnl <= -(self.initial_balance * self.max_loss_pct):
             print("[RISK LOCK] Max daily drawdown breached. Trading blocked.")
             return False
@@ -44,8 +45,9 @@ class PortfolioManager:
             
         return True
 
-    def update_position(self, sec_id: int, action: str, qty: int, fill_price: float) -> float:
+    def update_position(self, sec_id, action: str, qty: int, fill_price: float) -> float:
         """Updates portfolio state and returns booked (realized) PnL."""
+        sec_id = str(sec_id)
         pos = self.positions.get(sec_id)
         realized_pnl = 0.0
 

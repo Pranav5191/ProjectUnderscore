@@ -15,7 +15,7 @@ async def intraday_square_off_guard(execution_client=None):
             logger.info("[SAFETY GUARD] 3:15 PM threshold reached. Executing blanket market exit...")
             try:
                 if execution_client:
-                    pass # TODO: Add execution_client.flatten_all_positions() here when trade logic is built
+                    await execution_client.flatten_all_positions()
                     
                 logger.info("[SAFETY GUARD] Successfully squared off all positions.")
             except Exception as e:

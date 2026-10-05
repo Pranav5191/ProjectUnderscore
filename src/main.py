@@ -12,11 +12,14 @@ from typing import Any, NoReturn
 from src.auth.angel_auth import AngelAuthenticator
 from src.pipeline.websocket_client import AngelDataPipeline
 from src.pipeline.safety_timer import intraday_square_off_guard
-from src.trading.execution_client import AngelExecutionClient, OrderType
+# NOTE: AngelExecutionClient moved to commented section in execution_client.py
+# These imports are from the old architecture and will crash.
+# Uncomment and update when migrating to live execution.
+# from src.trading.execution_client import AngelExecutionClient, OrderType
+# from src.trading.strategy_engine import BaseStrategy, RiskLimits, Signal, SignalType, StrategyEngine
 
 # Core Architecture 
 from src.pipeline.db import DatabaseManager
-from src.trading.strategy_engine import BaseStrategy, RiskLimits, Signal, SignalType, StrategyEngine
 
 logging.basicConfig(
     level=logging.INFO,

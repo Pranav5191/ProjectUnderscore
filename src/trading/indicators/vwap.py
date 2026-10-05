@@ -16,10 +16,11 @@ class TickVWAP(BaseIndicator):
             self.cumulative_vol[sec_id] = 0
 
         ltp = float(tick.get('ltp', 0.0))
-        # Indian broker tick data usually passes volume as 'last_traded_quantity' or 'ltq'
-        vol = float(tick.get('last_traded_quantity', tick.get('ltq', tick.get('v', 1.0))))
+        # Handle both live (last_traded_quantity) and replay (ltq) tick formats
+        raw_vol = tick.get('last_traded_quantity') or tick.get('ltq') or tick.get('v')
+        vol = float(raw_vol) if raw_vol is not None and float(raw_vol) > 0 else 0.0
 
-        if ltp == 0.0 or vol == 0.0:
+        if ltp == 0.0 or vol <= 0.0:
             return
 
         # VWAP Math: Sum(Price * Volume) / Sum(Volume)
