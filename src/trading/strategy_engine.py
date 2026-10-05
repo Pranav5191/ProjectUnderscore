@@ -248,7 +248,7 @@ def main():
         cvd_score = cvd.get_score(sec_id)
 
         # =================================================================
-        # 4. POSITION MANAGEMENT (ATR-BASED SL/TP — STANDARD INTRADAY)
+        # 4. POSITION MANAGEMENT (STRICT 1% SL / 2% TP)
         # =================================================================
         current_pos = portfolio.positions.get(sec_id)
         if current_pos:
@@ -256,21 +256,13 @@ def main():
             pos_qty = current_pos['qty']
             side = current_pos['side']
 
-            raw_atr = atr.get_score(sec_id)
-            # ATR floor: 1% of price (was 0.5%). Prevents micro-stops on thinly-traded stocks.
-            min_atr = tick_ltp * 0.01
-            atr_val = raw_atr if raw_atr > min_atr else min_atr
-
-            # Absolute SL floor: 1% of price OR the natural bid-ask spread, whichever is larger.
-            # This ensures the SL is never inside normal market noise.
-            natural_spread = tick.get('ask', 0.0) - tick.get('bid', 0.0)
-            min_sl_distance = max(tick_ltp * 0.01, natural_spread)
+            # Fixed Percentage Risk Model: 1% Risk, 2% Reward
+            SL_PERCENT = 0.040
+            TP_PERCENT = 0.020
 
             if side == 'BUY':
-                # TP at 4x ATR, SL at 2x ATR → 1:2 risk-reward ratio
-                tp_price = entry_price + (atr_val * 4.0)
-                sl_distance = max(atr_val * 2.0, min_sl_distance)
-                sl_price = entry_price - sl_distance
+                tp_price = entry_price * (1.0 + TP_PERCENT)
+                sl_price = entry_price * (1.0 - SL_PERCENT)
 
                 if tick_ltp >= tp_price or tick_ltp <= sl_price:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
@@ -280,9 +272,8 @@ def main():
                     continue
 
             elif side == 'SELL':
-                tp_price = entry_price - (atr_val * 4.0)
-                sl_distance = max(atr_val * 2.0, min_sl_distance)
-                sl_price = entry_price + sl_distance
+                tp_price = entry_price * (1.0 - TP_PERCENT)
+                sl_price = entry_price * (1.0 + SL_PERCENT)
 
                 if tick_ltp <= tp_price or tick_ltp >= sl_price:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
@@ -290,7 +281,7 @@ def main():
                     print(f"\n[{reason}] Short #{sec_id}. Entry: {entry_price:.2f} Exit: {tick_ltp}. SL: {sl_price:.2f} TP: {tp_price:.2f}. Trace: {trace_id}")
                     engine.execute_paper_trade(tick, action='BUY', qty=pos_qty, trace_id=trace_id)
                     continue
-
+                
         # =================================================================
         # 5. ENTRY STRATEGY LOGIC
         # =================================================================
@@ -310,27 +301,22 @@ def main():
         # Use tick timestamp for cooldown — works correctly in both live and replay
         tick_ts = tick.get('timestamp', 0) / 1000.0  # epoch ms → seconds
 
-        # ─── DETERMINE SIGNAL DIRECTION (MICRO-STRUCTURE DIVERGENCE) ───
-        # Stop chasing exhaustion breakouts. Enter on pullbacks to the VWAP when 
-        # aggressive market orders (CVD) diverge from a spoofed limit book (OBI).
+        # ─── MICRO-STRUCTURE DIVERGENCE (With VWAP Deadzone) ───
         
-        # 1. VWAP Proximity: Only trade if the price is within 0.5% of the VWAP. 
-        # If it is further away, the move is already overextended.
-        near_vwap_bullish = current_vwap < tick_ltp < (current_vwap * 1.005)
-        near_vwap_bearish = (current_vwap * 0.995) < tick_ltp < current_vwap
+        # Calculate a 0.2% buffer zone around the VWAP
+        vwap_buffer = current_vwap * 0.002
+        upper_vwap_band = current_vwap + vwap_buffer
+        lower_vwap_band = current_vwap - vwap_buffer
 
-        # 2. The Divergence Logic
-        # BUY: Trend is UP, Price is near VWAP. Aggressive buyers are stepping in (CVD > 800),
-        # but the limit book looks bearish (OBI < 0.0). Smart money is silently absorbing limit sells.
-        is_bullish = near_vwap_bullish and cvd_score > 800 and obi_score < 0.0
+        # BEARISH DIVERGENCE (Smart Money Distribution)
+        # Price must be extended cleanly ABOVE the upper band.
+        is_bearish = (tick_ltp > upper_vwap_band) and (obi_score > 0.4) and (cvd_score < -1500)
 
-        # SELL: Trend is DOWN, Price is near VWAP. Aggressive sellers are dumping (CVD < -800),
-        # but the limit book looks bullish (OBI > 0.0). Smart money is distributing into limit buys.
-        is_bearish = near_vwap_bearish and cvd_score < -800 and obi_score > 0.0
+        # BULLISH DIVERGENCE (Smart Money Accumulation)
+        # Price must be extended cleanly BELOW the lower band.
+        is_bullish = (tick_ltp < lower_vwap_band) and (obi_score < -0.4) and (cvd_score > 1500)
 
         # ─── SIGNAL STREAK FILTER ───
-        # Track consecutive ticks confirming the same direction.
-        # Only act when MIN_SIGNAL_STREAK consecutive ticks agree.
         if is_bearish:
             current_signal = "SELL"
         elif is_bullish:
@@ -347,27 +333,16 @@ def main():
             signal_streak[sec_id] = (current_signal, 1)
 
         streak_count = signal_streak[sec_id][1]
-        if streak_count < MIN_SIGNAL_STREAK:
-            continue  # Signal not stable yet — wait for confirmation
+        
+        # Increased streak filter to 5. We want undeniable institutional pinning, not a brief flicker.
+        if streak_count < 5:
+            continue  
 
-        # ─── REVERSAL: Close opposing position, then WAIT ───
-        # Don't immediately flip — just close and let the cooldown enforce patience.
+        # ─── CONVICTION HOLD (Reversals Disabled) ───
+        # If we already have a position, we do NOT manually abort. 
+        # We let Section 4 (The ATR Risk Manager) do its job.
         if current_pos:
-            if current_signal == "SELL" and current_pos['side'] == 'BUY':
-                trace_id = f"{sec_id}-{tick.get('timestamp')}-REVSQ-{uuid.uuid4().hex[:6]}"
-                print(f"\n[REVERSAL] Closing Long #{sec_id}. Trace: {trace_id}")
-                engine.execute_paper_trade(tick, action='SELL', qty=current_pos['qty'], trace_id=trace_id)
-                last_trade_time[sec_id] = tick_ts  # Start cooldown after close
-                continue
-            elif current_signal == "BUY" and current_pos['side'] == 'SELL':
-                trace_id = f"{sec_id}-{tick.get('timestamp')}-REVSQ-{uuid.uuid4().hex[:6]}"
-                print(f"\n[REVERSAL] Closing Short #{sec_id}. Trace: {trace_id}")
-                engine.execute_paper_trade(tick, action='BUY', qty=current_pos['qty'], trace_id=trace_id)
-                last_trade_time[sec_id] = tick_ts  # Start cooldown after close
-                continue
-            else:
-                # Already have a position in the same direction — skip
-                continue
+            continue
 
         # ─── COOLDOWN CHECK (using tick timestamp) ───
         if tick_ts - last_trade_time.get(sec_id, 0.0) < COOLDOWN_SECONDS:
