@@ -15,6 +15,7 @@ redis_data/
 *.csv
 *.sql.gz
 *.json
+*.db
 
 #previous mentioned
 venv314/

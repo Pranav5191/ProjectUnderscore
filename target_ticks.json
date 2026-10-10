@@ -1,252 +1,402 @@
 [
     {
-        "symbol": "BLUSPRING-EQ",
-        "token": "757520",
-        "master_score": 0.887
+        "symbol": "EMIL-EQ",
+        "token": "11530",
+        "master_score": 0.8463,
+        "ai_score": 0.5,
+        "final_score": 0.7424,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "SAIL-EQ",
-        "token": "2963",
-        "master_score": 0.8736
+        "symbol": "TCPLPACK-EQ",
+        "token": "184",
+        "master_score": 0.8127,
+        "ai_score": 0.5,
+        "final_score": 0.7189,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "IDEA-EQ",
-        "token": "14366",
-        "master_score": 0.8597
+        "symbol": "MARKSANS-EQ",
+        "token": "10579",
+        "master_score": 0.7954,
+        "ai_score": 0.5,
+        "final_score": 0.7068,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "PARACABLES-EQ",
-        "token": "13951",
-        "master_score": 0.8467
+        "symbol": "SKYGOLD-EQ",
+        "token": "13631",
+        "master_score": 0.7914,
+        "ai_score": 0.5,
+        "final_score": 0.704,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "VERANDA-EQ",
-        "token": "8890",
-        "master_score": 0.8413
+        "symbol": "TDPOWERSYS-EQ",
+        "token": "25178",
+        "master_score": 0.7893,
+        "ai_score": 0.5,
+        "final_score": 0.7025,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "CONFIPET-EQ",
-        "token": "10238",
-        "master_score": 0.84
+        "symbol": "CUPID-EQ",
+        "token": "18520",
+        "master_score": 0.7889,
+        "ai_score": 0.5,
+        "final_score": 0.7022,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "JINDRILL-EQ",
-        "token": "13875",
-        "master_score": 0.8387
+        "symbol": "DOLPHIN-EQ",
+        "token": "18139",
+        "master_score": 0.7889,
+        "ai_score": 0.5,
+        "final_score": 0.7022,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "BHEL-EQ",
-        "token": "438",
-        "master_score": 0.8375
+        "symbol": "BLUESTONE-EQ",
+        "token": "759291",
+        "master_score": 0.7882,
+        "ai_score": 0.5,
+        "final_score": 0.7017,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "GRWRHITECH-EQ",
-        "token": "7982",
-        "master_score": 0.835
+        "symbol": "ATHERENERG-EQ",
+        "token": "757645",
+        "master_score": 0.786,
+        "ai_score": 0.5,
+        "final_score": 0.7002,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "POCL-EQ",
-        "token": "14385",
-        "master_score": 0.8347
+        "symbol": "APARINDS-EQ",
+        "token": "11491",
+        "master_score": 0.7834,
+        "ai_score": 0.5,
+        "final_score": 0.6984,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "BBOX-EQ",
-        "token": "3435",
-        "master_score": 0.8338
+        "symbol": "LUMAXTECH-EQ",
+        "token": "14014",
+        "master_score": 0.7815,
+        "ai_score": 0.5,
+        "final_score": 0.697,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "BIOCON-EQ",
-        "token": "11373",
-        "master_score": 0.8288
+        "symbol": "FINCABLES-EQ",
+        "token": "1038",
+        "master_score": 0.7692,
+        "ai_score": 0.5,
+        "final_score": 0.6884,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "VEDL-EQ",
-        "token": "3063",
-        "master_score": 0.8255
+        "symbol": "CNL-EQ",
+        "token": "11155",
+        "master_score": 0.7691,
+        "ai_score": 0.5,
+        "final_score": 0.6884,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "SHAILY-EQ",
-        "token": "8727",
-        "master_score": 0.8254
+        "symbol": "DEEPINDS-EQ",
+        "token": "3292",
+        "master_score": 0.7663,
+        "ai_score": 0.5,
+        "final_score": 0.6864,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "WELCORP-EQ",
-        "token": "11821",
-        "master_score": 0.8241
+        "symbol": "MATRIMONY-EQ",
+        "token": "21726",
+        "master_score": 0.7629,
+        "ai_score": 0.5,
+        "final_score": 0.684,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "LLOYDSENGG-EQ",
-        "token": "17801",
-        "master_score": 0.8235
+        "symbol": "ALLCARGO-EQ",
+        "token": "13501",
+        "master_score": 0.7627,
+        "ai_score": 0.5,
+        "final_score": 0.6839,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "BHAGYANGR-EQ",
-        "token": "20776",
-        "master_score": 0.8213
+        "symbol": "AARTIPHARM-EQ",
+        "token": "13868",
+        "master_score": 0.76,
+        "ai_score": 0.5,
+        "final_score": 0.682,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "GVPIL-EQ",
-        "token": "7862",
-        "master_score": 0.8205
+        "symbol": "ALICON-EQ",
+        "token": "13656",
+        "master_score": 0.7589,
+        "ai_score": 0.5,
+        "final_score": 0.6812,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "ADANIGREEN-EQ",
-        "token": "3563",
-        "master_score": 0.8168
+        "symbol": "BOSCHLTD-EQ",
+        "token": "2181",
+        "master_score": 0.7587,
+        "ai_score": 0.5,
+        "final_score": 0.6811,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "RITCO-EQ",
-        "token": "8944",
-        "master_score": 0.8163
+        "symbol": "NATIONALUM-EQ",
+        "token": "6364",
+        "master_score": 0.7548,
+        "ai_score": 0.5,
+        "final_score": 0.6784,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "IDEAFORGE-EQ",
-        "token": "17140",
-        "master_score": 0.8153
+        "symbol": "DEVYANI-EQ",
+        "token": "5373",
+        "master_score": 0.7504,
+        "ai_score": 0.5,
+        "final_score": 0.6753,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "RRKABEL-EQ",
-        "token": "18566",
-        "master_score": 0.8142
+        "symbol": "ROLEXRINGS-EQ",
+        "token": "5279",
+        "master_score": 0.7498,
+        "ai_score": 0.5,
+        "final_score": 0.6749,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "WHEELS-EQ",
-        "token": "3766",
-        "master_score": 0.8049
+        "symbol": "PRICOLLTD-EQ",
+        "token": "19631",
+        "master_score": 0.7493,
+        "ai_score": 0.5,
+        "final_score": 0.6745,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "OMAXAUTO-EQ",
-        "token": "10922",
-        "master_score": 0.8041
+        "symbol": "MANYAVAR-EQ",
+        "token": "8167",
+        "master_score": 0.7493,
+        "ai_score": 0.5,
+        "final_score": 0.6745,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "STYLEBAAZA-EQ",
-        "token": "25114",
-        "master_score": 0.804
+        "symbol": "RUDRA-EQ",
+        "token": "760392",
+        "master_score": 0.7492,
+        "ai_score": 0.5,
+        "final_score": 0.6744,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "TALBROAUTO-EQ",
-        "token": "13648",
-        "master_score": 0.8001
+        "symbol": "BECTORFOOD-EQ",
+        "token": "1628",
+        "master_score": 0.7492,
+        "ai_score": 0.5,
+        "final_score": 0.6744,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "MEGASTAR-EQ",
-        "token": "8153",
-        "master_score": 0.7991
+        "symbol": "ASKAUTOLTD-EQ",
+        "token": "20152",
+        "master_score": 0.7467,
+        "ai_score": 0.5,
+        "final_score": 0.6727,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "STLNETWORK-EQ",
-        "token": "758958",
-        "master_score": 0.7981
+        "symbol": "SHILPAMED-EQ",
+        "token": "17752",
+        "master_score": 0.7465,
+        "ai_score": 0.5,
+        "final_score": 0.6725,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "MWL-EQ",
-        "token": "759169",
-        "master_score": 0.7979
+        "symbol": "INDSWFTLAB-EQ",
+        "token": "4870",
+        "master_score": 0.7463,
+        "ai_score": 0.5,
+        "final_score": 0.6724,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "NLCINDIA-EQ",
-        "token": "8585",
-        "master_score": 0.7974
+        "symbol": "BIRLACABLE-EQ",
+        "token": "477",
+        "master_score": 0.7458,
+        "ai_score": 0.5,
+        "final_score": 0.6721,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "HSCL-EQ",
-        "token": "14334",
-        "master_score": 0.7969
+        "symbol": "SAPPHIRE-EQ",
+        "token": "6718",
+        "master_score": 0.7457,
+        "ai_score": 0.5,
+        "final_score": 0.672,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "THERMAX-EQ",
-        "token": "3475",
-        "master_score": 0.7957
+        "symbol": "SANSERA-EQ",
+        "token": "5751",
+        "master_score": 0.7451,
+        "ai_score": 0.5,
+        "final_score": 0.6716,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "MIDHANI-EQ",
-        "token": "2463",
-        "master_score": 0.7936
+        "symbol": "RBA-EQ",
+        "token": "1494",
+        "master_score": 0.7448,
+        "ai_score": 0.5,
+        "final_score": 0.6714,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "SASKEN-EQ",
-        "token": "11983",
-        "master_score": 0.7934
+        "symbol": "JGCHEM-EQ",
+        "token": "23056",
+        "master_score": 0.7438,
+        "ai_score": 0.5,
+        "final_score": 0.6707,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "BHARATWIRE-EQ",
-        "token": "16123",
-        "master_score": 0.7929
+        "symbol": "PGIL-EQ",
+        "token": "14260",
+        "master_score": 0.7433,
+        "ai_score": 0.5,
+        "final_score": 0.6703,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "NINSYS-EQ",
-        "token": "14194",
-        "master_score": 0.7926
+        "symbol": "VINDHYATEL-EQ",
+        "token": "3694",
+        "master_score": 0.7419,
+        "ai_score": 0.5,
+        "final_score": 0.6693,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "ACUTAAS-EQ",
-        "token": "5578",
-        "master_score": 0.7917
+        "symbol": "SBCL-EQ",
+        "token": "4656",
+        "master_score": 0.7407,
+        "ai_score": 0.5,
+        "final_score": 0.6685,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "DATAPATTNS-EQ",
-        "token": "7358",
-        "master_score": 0.7916
+        "symbol": "ORISSAMINE-EQ",
+        "token": "19931",
+        "master_score": 0.7405,
+        "ai_score": 0.5,
+        "final_score": 0.6683,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "ONIDA-EQ",
-        "token": "2202",
-        "master_score": 0.7906
+        "symbol": "WSTCSTPAPR-EQ",
+        "token": "3799",
+        "master_score": 0.7393,
+        "ai_score": 0.5,
+        "final_score": 0.6675,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "IFCI-EQ",
-        "token": "1491",
-        "master_score": 0.7885
+        "symbol": "COMSYN-EQ",
+        "token": "21578",
+        "master_score": 0.7388,
+        "ai_score": 0.5,
+        "final_score": 0.6672,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "BAJAJCON-EQ",
-        "token": "19531",
-        "master_score": 0.7873
+        "symbol": "DIVGIITTS-EQ",
+        "token": "14479",
+        "master_score": 0.7388,
+        "ai_score": 0.5,
+        "final_score": 0.6672,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "SUNFLAG-EQ",
-        "token": "3348",
-        "master_score": 0.7873
+        "symbol": "KTKBANK-EQ",
+        "token": "8054",
+        "master_score": 0.7378,
+        "ai_score": 0.5,
+        "final_score": 0.6665,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "LAURUSLABS-EQ",
-        "token": "19234",
-        "master_score": 0.7867
+        "symbol": "QUESS-EQ",
+        "token": "17704",
+        "master_score": 0.7374,
+        "ai_score": 0.5,
+        "final_score": 0.6662,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "ANTELOPUS-EQ",
-        "token": "13598",
-        "master_score": 0.7864
+        "symbol": "PAYTM-EQ",
+        "token": "6705",
+        "master_score": 0.7369,
+        "ai_score": 0.5,
+        "final_score": 0.6658,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "NRBBEARING-EQ",
-        "token": "7553",
-        "master_score": 0.7862
+        "symbol": "KINGFA-EQ",
+        "token": "18944",
+        "master_score": 0.7355,
+        "ai_score": 0.5,
+        "final_score": 0.6649,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "RATNAVEER-EQ",
-        "token": "18423",
-        "master_score": 0.7818
+        "symbol": "HEROMOTOCO-EQ",
+        "token": "1348",
+        "master_score": 0.7336,
+        "ai_score": 0.5,
+        "final_score": 0.6635,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "V2RETAIL-EQ",
-        "token": "14766",
-        "master_score": 0.7802
+        "symbol": "CPCAP-EQ",
+        "token": "20086",
+        "master_score": 0.7329,
+        "ai_score": 0.5,
+        "final_score": 0.663,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "SATIN-EQ",
-        "token": "10453",
-        "master_score": 0.7789
+        "symbol": "ELLEN-EQ",
+        "token": "758563",
+        "master_score": 0.7313,
+        "ai_score": 0.5,
+        "final_score": 0.6619,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "INSPIRISYS-EQ",
-        "token": "13730",
-        "master_score": 0.7769
+        "symbol": "63MOONS-EQ",
+        "token": "11868",
+        "master_score": 0.73,
+        "ai_score": 0.5,
+        "final_score": 0.661,
+        "cohort": "HYBRID_MATH_AI"
     },
     {
-        "symbol": "SURYODAY-EQ",
-        "token": "2970",
-        "master_score": 0.7755
+        "symbol": "AVALON-EQ",
+        "token": "15058",
+        "master_score": 0.7297,
+        "ai_score": 0.5,
+        "final_score": 0.6608,
+        "cohort": "HYBRID_MATH_AI"
     }
 ]
