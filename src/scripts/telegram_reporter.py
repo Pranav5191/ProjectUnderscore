@@ -187,7 +187,80 @@ class TelegramReporter:
             
         except Exception as e:
             print(f"[ERROR] Failed to execute Telegram pre-market handoff: {e}")    
+    def send_ai_catalyst_briefing(self, json_path: str, ai_catalyst_path: str = None):
+        """Dedicated AI Catalyst & Hybrid watchlist dispatcher. Leaves all existing methods intact."""
+        if not os.path.exists(json_path):
+            print(f"[ERROR] Watchlist file not found at {json_path}")
+            return
 
+        try:
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+
+            if not data:
+                print("[WARNING] Watchlist JSON is empty.")
+                return
+
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+            hybrid_picks = [x for x in data if x.get("cohort") == "HYBRID_MATH_AI"][:5]
+            pure_picks = [x for x in data if x.get("cohort") == "PURE_AI_CATALYST"][:5]
+
+            if not pure_picks and ai_catalyst_path and os.path.exists(ai_catalyst_path):
+                with open(ai_catalyst_path, 'r') as f:
+                    pure_picks = json.load(f)[:5]
+
+            if not hybrid_picks and not pure_picks:
+                hybrid_picks = data[:5]
+
+            lines = [
+                f"⚡ <b>NSE PRE-MARKET INTELLIGENCE</b> ({now_str})",
+                "━━━━━━━━━━━━━━━━━━━",
+                "📊 <b>TOP 5 HYBRID (MATH + CATALYST)</b>"
+            ]
+
+            for idx, p in enumerate(hybrid_picks, 1):
+                sym = p.get("symbol", "").replace("-EQ", "")
+                f_score = p.get("final_score", p.get("master_score", 0.0))
+                m_score = p.get("master_score", 0.0)
+                ai_score = p.get("ai_score", 0.50)
+                lines.append(
+                    f"<b>{idx}. {sym}</b> | Score: <code>{f_score:.3f}</code> "
+                    f"(Math: {m_score:.2f} | AI: {ai_score:.2f})"
+                )
+
+            lines.append("\n🎯 <b>TOP 5 PURE AI CATALYSTS</b>")
+            if pure_picks:
+                for idx, p in enumerate(pure_picks, 1):
+                    sym = p.get("symbol", "").replace("-EQ", "")
+                    ai_score = p.get("ai_score", 0.50)
+                    bias = p.get("sentiment_bias", "NEUTRAL")
+                    reason = p.get("reasoning", "Material catalyst observed.")
+                    icon = "🟢" if bias == "BULLISH" else ("🔴" if bias == "BEARISH" else "⚪")
+                    lines.append(
+                        f"<b>{idx}. {sym}</b> {icon} [AI: <code>{ai_score:.2f}</code>]\n"
+                        f"   ↳ <i>{reason}</i>"
+                    )
+            else:
+                lines.append("<i>Zero broad-market outliers passed liquidity scrub.</i>")
+
+            lines.append("━━━━━━━━━━━━━━━━━━━")
+            lines.append("✅ <i>Handed off to execution pipeline.</i>")
+
+            message = "\n".join(lines)
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            payload = {"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"}
+
+            response = requests.post(url, json=payload, timeout=10)
+            if response.status_code == 200:
+                print("[SUCCESS] Pre-market intelligence summary fired to Telegram.")
+            else:
+                print(f"[ERROR] Telegram text failed: {response.text}")
+
+            self.send_file(json_path)
+
+        except Exception as e:
+            print(f"[ERROR] Failed to execute Telegram pre-market handoff: {e}")
+            
 if __name__ == "__main__":
     reporter = TelegramReporter()
     reporter.send_report()
