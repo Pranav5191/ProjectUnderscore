@@ -4,6 +4,8 @@ import os
 import json
 import redis
 import uuid
+import pytz
+from collections import deque
 from dotenv import load_dotenv
 from datetime import datetime, time
 
@@ -23,6 +25,7 @@ from src.scripts.aws_sync import AWSSync
 
 # Risk Components
 from src.trading.risk_manager import RiskManager
+from src.ml.regime_inference import RegimeOracle
 
 # Log Components
 from src.trading.audit_logger import setup_signal_logger
@@ -31,7 +34,8 @@ from src.scripts.telegram_reporter import TelegramReporter
 current_dir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(current_dir, "../../.env")
 load_dotenv(dotenv_path=env_path)
-
+# Initialize Oracle once during engine startup
+oracle = RegimeOracle()
 
 def run_end_of_day_reporting(portfolio):
     """Saves state, syncs to AWS, sends Telegram reports. Called on every exit."""
@@ -63,13 +67,19 @@ def run_end_of_day_reporting(portfolio):
 
 def square_off_all(portfolio, engine, latest_ticks):
     """Squares off every open position using the last known market price."""
-    open_positions = list(portfolio.positions.items())
+    # List is used to avoid mutating the dictionary while iterating
+    open_positions = list(portfolio.positions.keys())
     if not open_positions:
         return
 
     print(f"\n[SYSTEM] Initiating forced liquidation of {len(open_positions)} positions.")
-    for open_sec_id, pos_data in open_positions:
+    for open_sec_id in open_positions:
         try:
+            # Re-fetch pos_data in case it was modified
+            pos_data = portfolio.positions.get(open_sec_id)
+            if not pos_data:
+                continue
+                
             pos_qty = pos_data['qty']
             side = pos_data['side']
             exit_action = 'SELL' if side == 'BUY' else 'BUY'
@@ -98,7 +108,14 @@ def square_off_all(portfolio, engine, latest_ticks):
                 'best_bid_vol': pos_qty,
                 'timestamp': datetime.now().isoformat()
             }
+            
+            # Execute bypasses margin limits on square off
             engine.execute_paper_trade(exit_tick, action=exit_action, qty=pos_qty, trace_id=trace_id)
+            
+            # Explicitly force delete to prevent phantom positions
+            if open_sec_id in portfolio.positions:
+                del portfolio.positions[open_sec_id]
+                
         except Exception as e:
             print(f"  [ERROR] Failed squaring off {open_sec_id}: {e}")
 
@@ -119,24 +136,29 @@ def main():
     vwap = TickVWAP()
     indicators = [spread, obi, cvd, wmp, atr, vwap]
 
-    portfolio = PortfolioManager(starting_balance=100000.0, max_allocation_pct=0.10, max_loss_pct=0.02)
+    portfolio = PortfolioManager(starting_balance=100000.0, max_allocation_pct=0.20, max_loss_pct=0.02)
     logger = AuditLogger()
     engine = ExecutionEngine(portfolio, logger)
 
     risk_manager = RiskManager(base_risk_pct=0.10)
     signal_logger = setup_signal_logger()
+    ist_tz = pytz.timezone('Asia/Kolkata')
 
     # Execution cooldown memory — 30s prevents overtrading (was 5s, caused 98 trades/day)
     last_trade_time = {}
     COOLDOWN_SECONDS = 30.0
 
-    # Signal stability filter — require N consecutive ticks confirming the same direction
-    # before entering. Prevents whipsaw from flickering OBI/CVD.
+    # Signal stability filter
     signal_streak = {}   # {sec_id: ("BUY"|"SELL", consecutive_count)}
-    MIN_SIGNAL_STREAK = 3
 
     # Cache the latest tick per security for accurate exit pricing
     latest_ticks = {}
+
+    # State tracking for Trailing Stop-Loss, Partial Scaling, Pyramiding, and Velocity
+    breakeven_locked = set()
+    partial_tp_executed = set()
+    pyramid_executed = set()
+    velocity_buffers = {}  # {sec_id: deque([(timestamp, obi, cvd), ...])}
 
     # =================================================================
     # TICK SOURCE: Stream (fast replay) or Pub/Sub (live + paced replay)
@@ -167,7 +189,7 @@ def main():
         # 1. CUTOFF CHECK (live mode uses wall clock, replay uses tick time)
         # =================================================================
         if not replay_mode:
-            current_time = datetime.now().time()
+            current_time = datetime.now(ist_tz).time()
             if current_time >= cutoff_time:
                 print("\n[CUTOFF] 3:14 PM reached (wall clock).")
                 square_off_all(portfolio, engine, latest_ticks)
@@ -181,17 +203,14 @@ def main():
         tick = None
 
         if replay_mode:
-            # STREAM MODE: Read next tick from Redis Stream (guaranteed, no drops)
             results = r.xread({"replay_stream": last_stream_id}, count=1, block=2000)
 
             if not results:
-                # Stream exhausted — all ticks processed
                 print(f"\n[REPLAY COMPLETE] Processed {processed:,} ticks.")
                 print("[REPLAY] Squaring off remaining positions...")
                 square_off_all(portfolio, engine, latest_ticks)
                 run_end_of_day_reporting(portfolio)
 
-                # Cleanup: remove replay mode flag and stream
                 r.delete("replay_mode")
                 r.delete("replay_stream")
                 print("[CLEANUP] Replay stream and mode flag cleared.")
@@ -202,9 +221,8 @@ def main():
             last_stream_id = entry_id
             tick = json.loads(entry_data["data"])
 
-            # In replay mode, use the TICK's timestamp for cutoff, not wall clock
             tick_epoch_ms = tick.get('timestamp', 0)
-            current_time = datetime.fromtimestamp(tick_epoch_ms / 1000).time()
+            current_time = datetime.fromtimestamp(tick_epoch_ms / 1000, tz=ist_tz).time()
 
             if current_time >= cutoff_time:
                 print(f"\n[CUTOFF] 3:14 PM reached (tick timestamp). Processed {processed:,} ticks.")
@@ -222,25 +240,29 @@ def main():
                 print(f"  [REPLAY] {processed:,} ticks processed ({pct:.0f}%)")
 
         else:
-            # PUB/SUB MODE: Non-blocking read (live + paced replay)
             message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if not (message and message['type'] == 'message'):
                 continue
             tick = json.loads(message['data'])
+            tick_epoch_ms = tick.get('timestamp', 0)
+            current_time = datetime.fromtimestamp(tick_epoch_ms / 1000, tz=ist_tz).time()
 
         if not tick:
             continue
 
         # =================================================================
-        # 3. PROCESS TICK (identical for both modes from here)
+        # 3. PROCESS TICK
         # =================================================================
         sec_id = str(tick.get('security_id'))
+        
+        # ─── CRITICAL FIX: IGNORE NON-TRADEABLE MACRO INDICES ───
+        # 99926000 (Nifty 50), 99926009 (Bank Nifty), 99926002 (Nifty IT)
+        if sec_id in {"99926000", "99926009", "99926002","2885","1333"}:
+            continue  # The ML Engine handles these; Strategy Engine ignores them
+            
         tick_ltp = tick.get('ltp', 0.0)
-
-        # Cache this tick as latest market data for this security
         latest_ticks[sec_id] = tick
 
-        # Update all indicators
         for ind in indicators:
             ind.update(tick)
 
@@ -248,7 +270,7 @@ def main():
         cvd_score = cvd.get_score(sec_id)
 
         # =================================================================
-        # 4. POSITION MANAGEMENT (STRICT 1% SL / 2% TP)
+        # 4. POSITION MANAGEMENT (STRICT 1.5% SL / 3.0% TP + Scale-Out + Pyramiding)
         # =================================================================
         current_pos = portfolio.positions.get(sec_id)
         if current_pos:
@@ -256,73 +278,176 @@ def main():
             pos_qty = current_pos['qty']
             side = current_pos['side']
 
-            # Fixed Percentage Risk Model: 1% Risk, 2% Reward
-            SL_PERCENT = 0.0400
-            TP_PERCENT = 0.020
+            SL_PERCENT = 0.015           # 1.5% Base Stop Loss
+            TP_PERCENT = 0.030           # 3.0% Final Take Profit Target
+            BREAKEVEN_TRIGGER = 0.010    # +1.0% Unrealized profit activates lock & pyramid
+            PARTIAL_TP_TRIGGER = 0.015   # +1.5% Unrealized profit triggers 50% scale-out
+            TAX_OFFSET_PCT = 0.002       # +0.2% Offset to cover STT & Txn fees
 
+            # CRITICAL FIX 2: Compute Breakeven SL based on original entry, not floating avg_price 
+            # if we have pyramided. (Simplified: Use avg_price but add a larger buffer if pyramided)
+            
             if side == 'BUY':
                 tp_price = entry_price * (1.0 + TP_PERCENT)
-                sl_price = entry_price * (1.0 - SL_PERCENT)
+                base_sl_price = entry_price * (1.0 - SL_PERCENT)
 
+                # Lock breakeven
+                if tick_ltp >= entry_price * (1.0 + BREAKEVEN_TRIGGER):
+                    breakeven_locked.add(sec_id)
+
+                # Check Partial TP (1.5%) - Only execute once
+                if sec_id not in partial_tp_executed and tick_ltp >= entry_price * (1.0 + PARTIAL_TP_TRIGGER):
+                    scale_qty = max(1, int(pos_qty * 0.5))
+                    trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                    print(f"\n[PARTIAL TP] Long #{sec_id} scaling out {scale_qty} shares. Entry: {entry_price:.2f} Exit: {tick_ltp}. Trace: {trace_id}")
+                    # CRITICAL FIX 1: Overwrite margin limit checks on exits
+                    engine.execute_paper_trade(tick, action='SELL', qty=scale_qty, trace_id=trace_id, bypass_margin=True)
+                    partial_tp_executed.add(sec_id)
+                    continue  
+
+                # Compute dynamic Stop-Loss
+                if sec_id in breakeven_locked:
+                    # Give a wider breathing room if we added size
+                    if sec_id in pyramid_executed:
+                        sl_price = entry_price * 0.995 # Allow 0.5% retracement on scaled size
+                    else:
+                        sl_price = entry_price * (1.0 + TAX_OFFSET_PCT)
+                else:
+                    sl_price = base_sl_price
+
+                # Check Final TP or SL
                 if tick_ltp >= tp_price or tick_ltp <= sl_price:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
-                    reason = "TAKE PROFIT" if tick_ltp >= tp_price else "STOP LOSS"
+                    reason = "FINAL TAKE PROFIT" if tick_ltp >= tp_price else ("BREAKEVEN SL" if sec_id in breakeven_locked else "STOP LOSS")
                     print(f"\n[{reason}] Long #{sec_id}. Entry: {entry_price:.2f} Exit: {tick_ltp}. SL: {sl_price:.2f} TP: {tp_price:.2f}. Trace: {trace_id}")
-                    engine.execute_paper_trade(tick, action='SELL', qty=pos_qty, trace_id=trace_id)
+                    # CRITICAL FIX 1: Bypass margin and explicitly delete
+                    engine.execute_paper_trade(tick, action='SELL', qty=pos_qty, trace_id=trace_id, bypass_margin=True)
+                    
+                    if sec_id in portfolio.positions:
+                        del portfolio.positions[sec_id]
+                        
+                    breakeven_locked.discard(sec_id)
+                    partial_tp_executed.discard(sec_id)
+                    pyramid_executed.discard(sec_id)
                     continue
+                    
+                # Dynamic Pyramiding (+1.0% Profit & CVD Expanding) - Evaluated LAST to avoid SL conflict
+                if sec_id in breakeven_locked and sec_id not in pyramid_executed:
+                    if cvd_score > 1500:
+                        add_qty = max(1, int(pos_qty * 0.5))
+                        trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                        print(f"\n[PYRAMID] Long #{sec_id} scaling IN {add_qty} shares. Entry: {entry_price:.2f} Add: {tick_ltp}. Trace: {trace_id}")
+                        engine.execute_paper_trade(tick, action='BUY', qty=add_qty, trace_id=trace_id)
+                        pyramid_executed.add(sec_id)
+                        continue 
 
             elif side == 'SELL':
                 tp_price = entry_price * (1.0 - TP_PERCENT)
-                sl_price = entry_price * (1.0 + SL_PERCENT)
+                base_sl_price = entry_price * (1.0 + SL_PERCENT)
+
+                if tick_ltp <= entry_price * (1.0 - BREAKEVEN_TRIGGER):
+                    breakeven_locked.add(sec_id)
+
+                if sec_id not in partial_tp_executed and tick_ltp <= entry_price * (1.0 - PARTIAL_TP_TRIGGER):
+                    scale_qty = max(1, int(pos_qty * 0.5))
+                    trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                    print(f"\n[PARTIAL TP] Short #{sec_id} scaling out {scale_qty} shares. Entry: {entry_price:.2f} Exit: {tick_ltp}. Trace: {trace_id}")
+                    engine.execute_paper_trade(tick, action='BUY', qty=scale_qty, trace_id=trace_id, bypass_margin=True)
+                    partial_tp_executed.add(sec_id)
+                    continue  
+
+                if sec_id in breakeven_locked:
+                    if sec_id in pyramid_executed:
+                        sl_price = entry_price * 1.005
+                    else:
+                        sl_price = entry_price * (1.0 - TAX_OFFSET_PCT)
+                else:
+                    sl_price = base_sl_price
 
                 if tick_ltp <= tp_price or tick_ltp >= sl_price:
                     trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
-                    reason = "TAKE PROFIT" if tick_ltp <= tp_price else "STOP LOSS"
+                    reason = "FINAL TAKE PROFIT" if tick_ltp <= tp_price else ("BREAKEVEN SL" if sec_id in breakeven_locked else "STOP LOSS")
                     print(f"\n[{reason}] Short #{sec_id}. Entry: {entry_price:.2f} Exit: {tick_ltp}. SL: {sl_price:.2f} TP: {tp_price:.2f}. Trace: {trace_id}")
-                    engine.execute_paper_trade(tick, action='BUY', qty=pos_qty, trace_id=trace_id)
+                    engine.execute_paper_trade(tick, action='BUY', qty=pos_qty, trace_id=trace_id, bypass_margin=True)
+                    
+                    if sec_id in portfolio.positions:
+                        del portfolio.positions[sec_id]
+                        
+                    breakeven_locked.discard(sec_id)
+                    partial_tp_executed.discard(sec_id)
+                    pyramid_executed.discard(sec_id)
                     continue
+
+                if sec_id in breakeven_locked and sec_id not in pyramid_executed:
+                    if cvd_score < -1500:
+                        add_qty = max(1, int(pos_qty * 0.5))
+                        trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+                        print(f"\n[PYRAMID] Short #{sec_id} scaling IN {add_qty} shares. Entry: {entry_price:.2f} Add: {tick_ltp}. Trace: {trace_id}")
+                        engine.execute_paper_trade(tick, action='SELL', qty=add_qty, trace_id=trace_id)
+                        pyramid_executed.add(sec_id)
+                        continue
+        else:
+            breakeven_locked.discard(sec_id)
+            partial_tp_executed.discard(sec_id)
+            pyramid_executed.discard(sec_id)
                 
         # =================================================================
         # 5. ENTRY STRATEGY LOGIC
         # =================================================================
 
-        # Block new entries if ATR hasn't warmed up yet
-        if atr.get_score(sec_id) == 0.0:
+        current_atr = atr.get_score(sec_id)
+        if current_atr == 0.0:
             continue
 
-        # Block new entries after 3:00 PM (uses tick time in replay, wall clock in live)
+        tick_bid = tick.get('bid', tick_ltp)
+        tick_ask = tick.get('ask', tick_ltp)
+        natural_spread = tick_ask - tick_bid
+        
+        if natural_spread > (0.08 * current_atr):
+            continue
+
         if current_time >= no_new_entries_time:
             continue
+
+        # CRITICAL FIX 3: Lunchtime Chop Freeze Disabled per request
+        # if time(11, 15, 0) <= current_time <= time(13, 30, 0):
+        #    continue
 
         current_vwap = vwap.get_score(sec_id)
         spread_score = spread.get_score(sec_id)
         MIN_POSITION_VALUE = 5000.0
 
-        # Use tick timestamp for cooldown — works correctly in both live and replay
-        tick_ts = tick.get('timestamp', 0) / 1000.0  # epoch ms → seconds
+        tick_ts = tick.get('timestamp', 0) / 1000.0  
 
-        # ─── MICRO-STRUCTURE DIVERGENCE (With VWAP Deadzone) ───
+        if sec_id not in velocity_buffers:
+            velocity_buffers[sec_id] = deque()
+            
+        v_buffer = velocity_buffers[sec_id]
+        v_buffer.append((tick_ts * 1000.0, obi_score, cvd_score))
         
-        # Calculate a 0.2% buffer zone around the VWAP
+        current_ts_ms = tick_ts * 1000.0
+        while v_buffer and (current_ts_ms - v_buffer[0][0]) > 3000.0:
+            v_buffer.popleft()
+            
+        if not v_buffer or (current_ts_ms - v_buffer[0][0]) < 2000.0:
+            continue
+            
+        old_ts, old_obi, old_cvd = v_buffer[0]
+        delta_obi = obi_score - old_obi
+        delta_cvd = cvd_score - old_cvd
+
         vwap_buffer = current_vwap * 0.002
         upper_vwap_band = current_vwap + vwap_buffer
         lower_vwap_band = current_vwap - vwap_buffer
 
-        # BEARISH DIVERGENCE (Smart Money Distribution)
-        # Price must be extended cleanly ABOVE the upper band.
-        is_bearish = (tick_ltp > upper_vwap_band) and (obi_score > 0.4) and (cvd_score < -1500)
+        is_bearish = (tick_ltp > upper_vwap_band) and (delta_obi > 0.15) and (delta_cvd < -200.0)
+        is_bullish = (tick_ltp < lower_vwap_band) and (delta_obi < -0.15) and (delta_cvd > 200.0)
 
-        # BULLISH DIVERGENCE (Smart Money Accumulation)
-        # Price must be extended cleanly BELOW the lower band.
-        is_bullish = (tick_ltp < lower_vwap_band) and (obi_score < -0.4) and (cvd_score > 1500)
-
-        # ─── SIGNAL STREAK FILTER ───
         if is_bearish:
             current_signal = "SELL"
         elif is_bullish:
             current_signal = "BUY"
         else:
-            # No signal — reset streak for this security
             signal_streak[sec_id] = (None, 0)
             continue
 
@@ -334,34 +459,78 @@ def main():
 
         streak_count = signal_streak[sec_id][1]
         
-        # Increased streak filter to 5. We want undeniable institutional pinning, not a brief flicker.
-        if streak_count < 5:
+        if streak_count < 3:
             continue  
 
-        # ─── CONVICTION HOLD (Reversals Disabled) ───
-        # If we already have a position, we do NOT manually abort. 
-        # We let Section 4 (The ATR Risk Manager) do its job.
         if current_pos:
             continue
 
-        # ─── COOLDOWN CHECK (using tick timestamp) ───
         if tick_ts - last_trade_time.get(sec_id, 0.0) < COOLDOWN_SECONDS:
             continue
+        
+        # ─── MACRO REGIME CIRCUIT BREAKER (FAIL-OPEN ARCHITECTURE) ───
+        if current_time >= time(9, 55, 0):
+            try:
+                macro_regime = oracle.get_regime(tick_epoch_ms)
+            except Exception as e:
+                # If LightGBM crashes, memory faults, or Pandas breaks, catch it here.
+                print(f"[ORACLE EXCEPTION] ML Fault: {e}. Falling back to Pure Math.")
+                macro_regime = None 
+            
+            # Only apply filters if the ML successfully returned a valid integer (1, -1, 0)
+            if macro_regime is not None:
+                # If the market is in Chop (0), veto trade to prevent tax churn
+                if macro_regime == 0:
+                    continue
 
-        # ─── POSITION SIZING AND EXECUTION ───
-        confidence = risk_manager.calculate_confidence(obi_score, cvd_score, spread_score)
-        margin_used = sum(pos['qty'] * pos['avg_price'] for pos in portfolio.positions.values())
+                # If taking a BUY signal, but macro regime is Bearish (-1), block it
+                if current_signal == "BUY" and macro_regime == -1:
+                    continue
+
+                # If taking a SELL signal, but macro regime is Bullish (1), block it
+                if current_signal == "SELL" and macro_regime == 1:
+                    continue
+        
+        # ─── DYNAMIC KELLY SCALING CAP FIX ───
+        cvd_edge = min(1.0, max(0.0, (abs(delta_cvd) - 200.0) / 700.0))
+        obi_edge = min(1.0, max(0.0, (abs(delta_obi) - 0.15) / 0.25))
+        spread_edge = max(0.0, 1.0 - (natural_spread / (0.08 * current_atr)))
+        
+        confluence_score = (cvd_edge + obi_edge + spread_edge) / 3.0
+        
+        # CRITICAL FIX 4: Hard cap the target capital at 15000 so it doesn't drain the wallet instantly
+        calculated_target = 10000 + (confluence_score * 15000.0)
+        target_capital = min(calculated_target, 20000.0)
+        
+        # Calculate Margin Limit
+        margin_used = sum((pos['qty'] * pos['avg_price']) / 5.0 for pos in portfolio.positions.values()) # Assuming 5x leverage
         free_cash = portfolio.current_balance - margin_used
+        
+        # Require minimum Rs. 4900 free cash to take any new position
+        if free_cash < (MIN_POSITION_VALUE / 5.0):
+             signal_logger.info(
+                f"Trace: BLOCKED-MARGIN | Sec: {sec_id} | Action: {current_signal} | "
+                f"Confluence: {confluence_score:.2f} | Status: REJECTED_PORTFOLIO_LIMITS"
+            )
+             continue
+             
+        ideal_qty = int(target_capital / tick_ltp)
+        available_vol = tick.get('best_bid_vol', 0) if current_signal == "SELL" else tick.get('best_ask_vol', 0)
+        
+        # Limit the quantity by 5x leverage buying power
+        qty = min(ideal_qty, available_vol, int((free_cash * 5.0) / tick_ltp))
 
-        if current_signal == "SELL":
-            qty = risk_manager.calculate_position_size(confidence, free_cash, tick_ltp, tick.get('best_bid_vol', 0))
-        else:
-            qty = risk_manager.calculate_position_size(confidence, free_cash, tick_ltp, tick.get('best_ask_vol', 0))
-
-        if qty > 0 and (qty * tick_ltp) >= MIN_POSITION_VALUE:
+        if qty > 0 and (qty * tick_ltp) >= 4900.0:
             trace_id = f"{sec_id}-{tick.get('timestamp')}-{uuid.uuid4().hex[:6]}"
+            # Bypass margin is False for entries
             status = engine.execute_paper_trade(tick, action=current_signal, qty=qty, trace_id=trace_id)
-            signal_logger.info(f"Trace: {trace_id} | Sec: {sec_id} | Action: {current_signal} | Conf: {confidence:.2f} | Qty: {qty} | Streak: {streak_count} | Status: {status}")
+            
+            signal_logger.info(
+                f"Trace: {trace_id} | Sec: {sec_id} | Action: {current_signal} | "
+                f"Confluence: {confluence_score:.2f} | Cap: Rs.{target_capital:.2f} | "
+                f"Qty: {qty} | Streak: {streak_count} | Status: {status}"
+            )
+            
             if status == "EXECUTED":
                 last_trade_time[sec_id] = tick_ts
 

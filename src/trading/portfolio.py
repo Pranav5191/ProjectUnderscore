@@ -35,10 +35,8 @@ class PortfolioManager:
             print("[RISK LOCK] Max daily drawdown breached. Trading blocked.")
             return False
             
-        # Prevent pyramiding into the same direction continuously
-        current_pos = self.positions.get(sec_id)
-        if current_pos and current_pos['side'] == action:
-            return False
+        # REMOVED: The hard block on pyramiding. 
+        # strategy_engine.py now strictly controls scaling limits via 'pyramid_executed'.
 
         if requested_margin > (self.current_balance * self.max_allocation_pct):
             return False
