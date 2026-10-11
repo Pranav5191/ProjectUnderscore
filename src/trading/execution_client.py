@@ -34,15 +34,13 @@ class ExecutionEngine:
         total_taxes = brokerage + exchange_txn_charge + sebi_fee + gst + stt + stamp_duty
         return round(total_taxes, 2)
 
-    def execute_paper_trade(self, tick: dict, action: str, qty: int, trace_id: str = "NO_TRACE") -> str:
+    def execute_paper_trade(self, tick: dict, action: str, qty: int, trace_id: str = "NO_TRACE", bypass_margin: bool = False) -> str:
         sec_id = tick.get('security_id')
         tick_timestamp = tick.get('timestamp')
         
         # ==========================================
         # PRICING LOGIC: LIQUIDITY MAKER (LIMIT ORDER)
         # ==========================================
-        # Instead of crossing the spread (Taker: Buying at Ask, Selling at Bid),
-        # we provide liquidity (Maker: Buying at Bid, Selling at Ask).
         maker_price = (
             tick.get('bid') if action == 'BUY' else tick.get('ask')
         ) or tick.get('ltp') or tick.get('price') or 0.0
@@ -52,38 +50,36 @@ class ExecutionEngine:
             return "REJECTED_INVALID_PRICE"
 
         margin_required = float(maker_price) * qty
-
-        # ==========================================
-        # GATE 1: Pyramiding / Duplicate Order Check
-        # ==========================================
         current_pos = self.portfolio.positions.get(sec_id)
-        if current_pos and current_pos['side'] == action:
-            return "REJECTED_POSITION_EXISTS"
 
-        # Determine if this is a closing trade (opposite side of existing position)
+        # Determine if this is a closing/reducing trade (opposite side of existing position)
         is_closing_trade = current_pos is not None and current_pos['side'] != action
 
-        if not is_closing_trade:
+        if not bypass_margin and not is_closing_trade:
             # ==========================================
-            # GATE 2: Margin Check (only for new entries)
+            # GATE 1: Margin Check (only for new entries or pyramiding)
             # ==========================================
-            margin_used = sum(pos['qty'] * pos['avg_price'] for pos in self.portfolio.positions.values())
+            # Assume up to 5x Intraday Leverage for available buying power calculation
+            margin_used = sum((pos['qty'] * pos['avg_price']) / 5.0 for pos in self.portfolio.positions.values())
             available_cash = self.portfolio.current_balance - margin_used
-            if available_cash < margin_required:
+            
+            # If we need Rs. 10000 of stock, we only need Rs. 2000 of cash margin
+            cash_needed = margin_required / 5.0
+            
+            if available_cash < cash_needed:
                 return "REJECTED_INSUFFICIENT_FUNDS"
 
             # ==========================================
-            # GATE 3: Secondary Portfolio Limits (only for new entries)
+            # GATE 2: Secondary Portfolio Limits
             # ==========================================
-            if not self.portfolio.can_take_trade(sec_id, action, margin_required):
-                return "REJECTED_PORTFOLIO_LIMITS"
+            # If it's a new position (not Pyramiding), check standard portfolio limits
+            if not current_pos:
+                if not self.portfolio.can_take_trade(sec_id, action, margin_required):
+                    return "REJECTED_PORTFOLIO_LIMITS"
 
         # ==========================================
         # EXECUTION (MAKER)
         # ==========================================
-        
-        # As a Liquidity Maker, we dictate the price via Limit Orders. 
-        # Slippage penalty is reduced to exactly zero. We capture the spread.
         slippage = 0.0
         fill_price = maker_price
 
