@@ -173,7 +173,7 @@ class HybridRanker:
             })
 
         blended_list.sort(key=lambda x: (x["final_score"], x["master_score"]), reverse=True)
-        return blended_list[:15]
+        return blended_list
 
     def rank_pure_ai_top_20(
         self, broad_ai_evaluations: Dict[str, Dict], output_json_path: str

@@ -18,9 +18,9 @@ class CohortBlender:
         all_hybrid_candidates: List[Dict],
         pure_ai_candidates: List[Dict],
         target_ticks_path: str,
-        hybrid_base_quota: int = 15,
-        pure_ai_quota: int = 10,
-        min_total_targets: int = 50
+        hybrid_base_quota: int = 20,
+        pure_ai_quota: int = 5,
+        min_total_targets: int = 25
     ) -> List[Dict]:
         """
         Builds the target contract with guaranteed minimum stock count:
