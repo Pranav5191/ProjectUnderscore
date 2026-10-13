@@ -38,10 +38,10 @@ class MasterIngester:
             
             if result:
                 last_date = datetime.strptime(result, '%Y-%m-%d')
-                return (last_date + timedelta(days=1)).strftime('%Y-%m-%d 09:15')
+                return (last_date + timedelta(days=1)).strftime('%Y-%m-%d 00:00')
             
             # FIXED: Pulled 260 days to satisfy the 252-day screener guardrail (padding for holidays)
-            return (datetime.now() - timedelta(days=500)).strftime('%Y-%m-%d 09:15')
+            return (datetime.now() - timedelta(days=500)).strftime('%Y-%m-%d 00:00')
 
     def sync_database(self, surviving_equities: list):
         """
@@ -50,7 +50,7 @@ class MasterIngester:
         """
         print(f"\n[SYSTEM] Commencing Master OHLCV Sync for {len(surviving_equities)} equities...")
         
-        to_date = datetime.now().strftime('%Y-%m-%d 15:30')
+        to_date = datetime.now().strftime('%Y-%m-%d 00:00')
         staged_rows = []
         count = 0
 
