@@ -127,31 +127,72 @@ class PreMarketAIOrchestrator:
                 stock_context_map=self.ranker.symbol_to_context
             )
 
+            # Step 2.5: Merge Overnight Rumors (RSS / Reddit) into Math & Broad Evals
+            rumors_path = os.path.join(os.path.dirname(self.target_ticks_path), "data", "overnight_rumors.json")
+            if not os.path.exists(rumors_path):
+                rumors_path = "data/overnight_rumors.json"
+            if os.path.exists(rumors_path):
+                try:
+                    with open(rumors_path, "r") as rf:
+                        rumors_list = json.load(rf)
+                    logger.info(f"[STEP 2.5] Merging {len(rumors_list)} overnight rumors from {rumors_path}...")
+                    top_50_set = set(top_50_symbols)
+                    for r in rumors_list:
+                        sym = str(r.get("symbol", "")).upper().strip()
+                        if not sym or sym == "NONE":
+                            continue
+                        bias = str(r.get("sentiment_bias", "NEUTRAL")).upper()
+                        intensity = float(r.get("rumor_intensity", 0.5))
+                        r_reason = str(r.get("reasoning", "Overnight news catalyst.")).strip()
+                        if bias == "BULLISH":
+                            r_score = round(min(0.95, 0.50 + (0.40 * intensity)), 4)
+                        elif bias == "BEARISH":
+                            r_score = round(max(0.05, 0.50 - (0.40 * intensity)), 4)
+                        else:
+                            r_score = 0.50
+                        r_eval = {
+                            "symbol": sym,
+                            "sentiment_bias": bias,
+                            "catalyst_intensity": "HIGH" if intensity >= 0.7 else ("MEDIUM" if intensity >= 0.4 else "LOW"),
+                            "ai_score": r_score,
+                            "reasoning": f"[News/Rumor] {r_reason}"[:280]
+                        }
+                        target_map = math_ai_evals if sym in top_50_set else broad_ai_evals
+                        if sym in target_map:
+                            existing = target_map[sym]
+                            if existing.get("sentiment_bias") == bias and bias == "BULLISH":
+                                existing["ai_score"] = round(min(0.98, float(existing.get("ai_score", 0.5)) + 0.08 * intensity), 4)
+                            existing["reasoning"] = f"{existing.get('reasoning', '')} | {r_eval['reasoning']}"[:280]
+                        else:
+                            target_map[sym] = r_eval
+                except Exception as re:
+                    logger.warning(f"Failed to merge overnight_rumors.json: {re}")
+
             full_math_evals = {
                 sym: math_ai_evals.get(sym, dict(NEUTRAL_FALLBACK_RESULT))
                 for sym in top_50_symbols
             }
 
-            # Step 3: Math + AI Blending (Top 15)
+            # Step 3: Math + AI Blending (Reshuffle Screener Candidates)
             logger.info(f"[STEP 3] Computing Hybrid Re-Ranking (w_math={self.w_math}, w_ai={self.w_ai})...")
-            hybrid_top_15 = self.ranker.rank_hybrid_top_15(math_top_50, full_math_evals)
+            hybrid_ranked = self.ranker.rank_hybrid_top_15(math_top_50, full_math_evals)
 
-            # Step 4: Pure AI Discovery Universe (Top 20 -> ai_catalyst_ticks.json)
+            # Step 4: Pure AI Discovery Universe (NSE Filings + Overnight Rumors -> ai_catalyst_ticks.json)
             logger.info("[STEP 4] Filtering & ranking Pure AI Discovery Universe against master_history.db...")
             pure_ai_top_20 = self.ranker.rank_pure_ai_top_20(
                 broad_ai_evals,
                 output_json_path=self.ai_catalyst_ticks_path
             )
 
-            # Step 5: Master Cohort Handoff (15 Hybrid + 10 Pure AI -> target_ticks.json)
-            logger.info("[STEP 5] Blending cohorts and writing target_ticks.json...")
+            # Step 5: Master Cohort Handoff (20 Hybrid + 5 Pure AI -> 25 total in target_ticks.json)
+            logger.info("[STEP 5] Blending cohorts (20 Screener Hybrid + 5 Pure AI) into target_ticks.json...")
             final_contract = CohortBlender.blend_and_export(
-                hybrid_top_15=hybrid_top_15,
-                pure_ai_top_20=pure_ai_top_20,
+                all_hybrid_candidates=hybrid_ranked,
+                pure_ai_candidates=pure_ai_top_20,
                 target_ticks_path=self.target_ticks_path,
-                hybrid_quota=15,
-                pure_ai_quota=10,
-                min_total_targets=50
+                hybrid_base_quota=20,
+                pure_ai_quota=5,
+                min_total_targets=25
             )
             # Step 6: Dispatch Pre-Market Intelligence Briefing to Telegram
             logger.info("[STEP 6] Dispatching pre-market audit to Telegram...")
@@ -169,7 +210,7 @@ class PreMarketAIOrchestrator:
         try:
             math_top_50 = self.load_math_top_50()
             fallback_list = []
-            for item in math_top_50[:50]:
+            for item in math_top_50[:25]:
                 m_score = float(item.get("master_score", 0.0))
                 f_score = round((self.w_math * m_score) + (self.w_ai * 0.50), 4)
                 fallback_list.append({
