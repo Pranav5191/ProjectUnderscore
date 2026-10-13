@@ -25,17 +25,19 @@ class RegimeOracle:
             decode_responses=True
         )
         
+        # In-memory evaluation cache for the Trade Autopsy logger
+        self.last_eval = {}
+        
         self.historical_df = None
         if os.path.exists(CSV_PATH):
             self.historical_df = pd.read_csv(CSV_PATH)
             
-            # Bulletproof Timezone Normalization
-            parsed_time = pd.to_datetime(self.historical_df['timestamp'])
+            # 1. Convert to string and slice off any trailing +05:30 timezones
+            raw_ts = self.historical_df['timestamp'].astype(str).str.split('+').str[0]
             
-            # If the CSV saved with a timezone (like +05:30), safely convert and strip it
-            if parsed_time.dt.tz is not None:
-                parsed_time = parsed_time.dt.tz_convert('Asia/Kolkata').dt.tz_localize(None)
-                
+            # 2. Parse cleanly as naive IST using mixed format handler
+            parsed_time = pd.to_datetime(raw_ts, format='mixed')
+            
             self.historical_df['timestamp'] = parsed_time
             self.historical_df.set_index('timestamp', inplace=True)
             self.historical_df.sort_index(inplace=True)
@@ -69,10 +71,18 @@ class RegimeOracle:
             if raw_data:
                 features_dict = json.loads(raw_data)
         
-        # Fail-safe circuit breaker: If no macro data exists, the pipeline is broken.
+        # Fail-safe circuit breaker: If no macro data exists, trigger Fail-Open bypass
         if not features_dict:
             print(f"[ORACLE CRITICAL] {tick_time_str} | Data missing or Redis offline. Bypassing ML.")
-            return None  # Return None instead of 0 to signal a critical fault
+            self.last_eval = {
+                "regime": None,
+                "regime_name": "MISSING_DATA",
+                "prob_bull": 0.0,
+                "prob_bear": 0.0,
+                "prob_chop": 0.0,
+                "edge": 0.0
+            }
+            return None
             
         # Format features to match model expectations
         feature_vector = [features_dict.get(col, 0.0) for col in self.feature_names]
@@ -96,8 +106,20 @@ class RegimeOracle:
             else:
                 regime_output = 0   # Ambiguous / Deadlock (Veto)
             
-        # ─── X-RAY VISION LOGGING ───
         regime_name = "BULL" if regime_output == 1 else "BEAR" if regime_output == -1 else "CHOP"
-        print(f"  [ORACLE AI] {tick_time_str} | Output: {regime_name} | Edge: {abs(prob_bull - prob_bear)*100:.1f}% | (Bull: {prob_bull*100:.1f}%, Bear: {prob_bear*100:.1f}%, Chop: {prob_chop*100:.1f}%)")
+        directional_delta = float(abs(prob_bull - prob_bear))
+        
+        # Cache evaluation metadata for the Autopsy logger in strategy engine
+        self.last_eval = {
+            "regime": regime_output,
+            "regime_name": regime_name,
+            "prob_bull": float(prob_bull),
+            "prob_bear": float(prob_bear),
+            "prob_chop": float(prob_chop),
+            "edge": directional_delta
+        }
+        
+        # ─── X-RAY VISION LOGGING ───
+        print(f"  [ORACLE AI] {tick_time_str} | Output: {regime_name} | Edge: {directional_delta*100:.1f}% | (Bull: {prob_bull*100:.1f}%, Bear: {prob_bear*100:.1f}%, Chop: {prob_chop*100:.1f}%)")
         
         return regime_output
