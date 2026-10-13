@@ -16,7 +16,7 @@ redis_data/
 *.sql.gz
 *.json
 *.db
-
+*.xlsx
 #previous mentioned
 venv314/
 *.log
