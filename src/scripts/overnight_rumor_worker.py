@@ -87,7 +87,7 @@ class RumorEvaluator:
                 "Content-Type": "application/json"
             }
             payload = {
-                "model": "openai/gpt-oss-20b",
+                "model": "llama-3.1-8b-instant",
                 "messages": [
                     {
                         "role": "system", 

@@ -196,37 +196,20 @@ class PreMarketAIOrchestrator:
             )
             # Step 6: Dispatch Pre-Market Intelligence Briefing to Telegram
             logger.info("[STEP 6] Dispatching pre-market audit to Telegram...")
-            reporter = TelegramReporter()
-            reporter.dispatch()
-            elapsed = (datetime.now(IST) - start_time).total_seconds()
-            logger.info(f"[SUCCESS] AI Orchestrator finished in {elapsed:.2f}s. Total symbols handed off: {len(final_contract)}")
-    
+            try:
+                target_file = "/home/ubuntu/project_pipeline/target_ticks.json"
+                logger.info(f"Triggering Telegram reporter for {target_file}...")
+                from src.scripts.telegram_reporter import TelegramReporter
+                TelegramReporter().send_ai_catalyst_briefing(target_file)
+                logger.info("Telegram dispatch completed successfully.")
+            except Exception as e:
+                logger.error(f"CRITICAL: Failed to send Telegram audit: {e}")
         except Exception as e:
             logger.error(f"[CRITICAL FAIL-SAFE] AI Orchestrator encountered error: {e}")
-            logger.info("Applying fail-safe: Preserving Top 15 mathematical picks with neutral 0.50 AI score.")
-            self._apply_emergency_fallback()
-
-    def _apply_emergency_fallback(self):
-        try:
-            math_top_50 = self.load_math_top_50()
-            fallback_list = []
-            for item in math_top_50[:25]:
-                m_score = float(item.get("master_score", 0.0))
-                f_score = round((self.w_math * m_score) + (self.w_ai * 0.50), 4)
-                fallback_list.append({
-                    "symbol": item["symbol"],
-                    "token": str(item["token"]),
-                    "master_score": round(m_score, 4),
-                    "ai_score": 0.50,
-                    "final_score": f_score,
-                    "cohort": "HYBRID_MATH_AI"
-                })
-            with open(self.target_ticks_path, "w") as f:
-                json.dump(fallback_list, f, indent=4)
-        except Exception as inner_e:
-            logger.error(f"Emergency fallback could not rewrite target_ticks.json: {inner_e}")
-
 
 if __name__ == "__main__":
-    orchestrator = PreMarketAIOrchestrator()
-    orchestrator.execute_pipeline()
+    try:
+        orchestrator = PreMarketAIOrchestrator()
+        orchestrator.execute_pipeline()
+    except Exception as e:
+        logger.error(f"Failed to execute orchestrator: {e}")
