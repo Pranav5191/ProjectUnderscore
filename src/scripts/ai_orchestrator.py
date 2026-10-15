@@ -14,7 +14,7 @@ import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
-from telegram_reporter import TelegramReporter
+from src.scripts.telegram_reporter import TelegramReporter
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
@@ -28,6 +28,7 @@ from src.scripts.ai_catalyst_crawler import CatalystCrawler
 from src.scripts.ai_evaluator import CatalystEvaluator, NEUTRAL_FALLBACK_RESULT
 from src.scripts.hybrid_ranker import HybridRanker
 from src.scripts.cohort_blender import CohortBlender
+from src.scripts.telegram_reporter import TelegramReporter
 
 logging.basicConfig(
     level=logging.INFO,
@@ -139,8 +140,10 @@ class PreMarketAIOrchestrator:
                     top_50_set = set(top_50_symbols)
                     for r in rumors_list:
                         sym = str(r.get("symbol", "")).upper().strip()
-                        if not sym or sym == "NONE":
+                        if not sym or sym in ("NONE", "NIFTY", "SENSEX"):
                             continue
+                        if not sym.endswith("-EQ"):
+                            sym = f"{sym}-EQ"
                         bias = str(r.get("sentiment_bias", "NEUTRAL")).upper()
                         intensity = float(r.get("rumor_intensity", 0.5))
                         r_reason = str(r.get("reasoning", "Overnight news catalyst.")).strip()
@@ -153,7 +156,7 @@ class PreMarketAIOrchestrator:
                         r_eval = {
                             "symbol": sym,
                             "sentiment_bias": bias,
-                            "catalyst_intensity": "HIGH" if intensity >= 0.7 else ("MEDIUM" if intensity >= 0.4 else "LOW"),
+                            "catalyst_intensity": round(float(intensity), 4),
                             "ai_score": r_score,
                             "reasoning": f"[News/Rumor] {r_reason}"[:280]
                         }

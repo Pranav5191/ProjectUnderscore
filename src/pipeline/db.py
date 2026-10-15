@@ -50,8 +50,8 @@ class DatabaseManager:
 
     async def connect(
         self,
-        min_size: int = 10,
-        max_size: int = 20,
+        min_size: int = 1,
+        max_size: int = 3,
         command_timeout: float = 60.0,
     ) -> None:
         """Initialize asyncpg connection pool.

@@ -52,7 +52,7 @@ class CatalystEvaluator:
     def _build_gemini_chain(self):
         if not self.gemini_api_key:
             return
-        blocked_substrings = ["1.5", "2.0", "2.5", "tts", "image", "audio", "thinking", "vision", "embedding", "8b"]
+        blocked_substrings = ["1.5", "tts", "image", "audio", "vision", "embedding", "8b"]
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models?key={self.gemini_api_key}"
             resp = requests.get(url, timeout=10)
@@ -70,7 +70,7 @@ class CatalystEvaluator:
                 ]
 
                 chain = []
-                for pref in ["gemini-flash-lite-latest", "gemini-flash-latest"]:
+                for pref in ["gemini-3.8-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-flash-lite-latest"]:
                     if pref in available and pref not in chain:
                         chain.append(pref)
                 for cand in active_candidates:

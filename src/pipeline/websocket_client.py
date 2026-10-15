@@ -49,15 +49,18 @@ class AngelDataPipeline:
             best_sell = best_sell_data[0] if best_sell_data else {}
 
             # Standardize the payload keys and convert paise to INR
+            ltp_val = message.get("last_traded_price", 0) / 100.0
+            bid_val = (best_buy.get("price", 0) / 100.0) or ltp_val
+            ask_val = (best_sell.get("price", 0) / 100.0) or ltp_val
             normalized_tick = {
                 "timestamp": message.get("exchange_timestamp", 0),
                 "security_id": int(message.get("token", 0)),
-                "ltp": message.get("last_traded_price", 0) / 100.0,
+                "ltp": ltp_val,
                 "ltq": message.get("last_traded_quantity", 0),
-                "bid": best_buy.get("price", 0) / 100.0,
-                "ask": best_sell.get("price", 0) / 100.0,
-                "best_bid_vol": best_buy.get("quantity", 0),
-                "best_ask_vol": best_sell.get("quantity", 0)
+                "bid": bid_val,
+                "ask": ask_val,
+                "best_bid_vol": best_buy.get("quantity", 0) or 100,
+                "best_ask_vol": best_sell.get("quantity", 0) or 100
             }
 
             # 1. Stream to Batch Writer (PostgreSQL persistence)

@@ -1,202 +1,252 @@
 [
     {
-        "symbol": "WSTCSTPAPR-EQ",
-        "token": "3799",
-        "master_score": 0.8882,
-        "ai_score": 0.5,
-        "final_score": 0.7717,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "SHRINGARMS-EQ",
-        "token": "759093",
-        "master_score": 0.8617,
-        "ai_score": 0.5,
-        "final_score": 0.7532,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "SBC-EQ",
-        "token": "6792",
-        "master_score": 0.8583,
-        "ai_score": 0.5,
-        "final_score": 0.7508,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
         "symbol": "SKYGOLD-EQ",
         "token": "13631",
-        "master_score": 0.8499,
-        "ai_score": 0.5,
-        "final_score": 0.7449,
-        "cohort": "HYBRID_MATH_AI"
+        "master_score": 0.8448
+    },
+    {
+        "symbol": "JKIPL-EQ",
+        "token": "759205",
+        "master_score": 0.8297
+    },
+    {
+        "symbol": "SOUTHBANK-EQ",
+        "token": "5948",
+        "master_score": 0.8149
     },
     {
         "symbol": "SHANTIGOLD-EQ",
         "token": "758002",
-        "master_score": 0.8374,
-        "ai_score": 0.5,
-        "final_score": 0.7362,
-        "cohort": "HYBRID_MATH_AI"
+        "master_score": 0.8132
     },
     {
-        "symbol": "PVRINOX-EQ",
-        "token": "13147",
-        "master_score": 0.8281,
-        "ai_score": 0.5,
-        "final_score": 0.7297,
-        "cohort": "HYBRID_MATH_AI"
+        "symbol": "BMWVENTLTD-EQ",
+        "token": "759256",
+        "master_score": 0.8106
     },
     {
-        "symbol": "PREMIERPOL-EQ",
-        "token": "3908",
-        "master_score": 0.8277,
-        "ai_score": 0.5,
-        "final_score": 0.7294,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "CPCAP-EQ",
-        "token": "20086",
-        "master_score": 0.827,
-        "ai_score": 0.5,
-        "final_score": 0.7289,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "MAWANASUG-EQ",
-        "token": "17022",
-        "master_score": 0.8261,
-        "ai_score": 0.5,
-        "final_score": 0.7283,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "AVADHSUGAR-EQ",
-        "token": "21406",
-        "master_score": 0.8215,
-        "ai_score": 0.5,
-        "final_score": 0.725,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "BBOX-EQ",
-        "token": "3435",
-        "master_score": 0.8171,
-        "ai_score": 0.5,
-        "final_score": 0.722,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "SMCGLOBAL-EQ",
-        "token": "2320",
-        "master_score": 0.8167,
-        "ai_score": 0.5,
-        "final_score": 0.7217,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "DBOL-EQ",
-        "token": "10893",
-        "master_score": 0.816,
-        "ai_score": 0.5,
-        "final_score": 0.7212,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "IBULLSLTD-EQ",
-        "token": "24999",
-        "master_score": 0.8156,
-        "ai_score": 0.5,
-        "final_score": 0.7209,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "UTTAMSUGAR-EQ",
-        "token": "13376",
-        "master_score": 0.8144,
-        "ai_score": 0.5,
-        "final_score": 0.7201,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "DMCC-EQ",
-        "token": "6973",
-        "master_score": 0.8117,
-        "ai_score": 0.5,
-        "final_score": 0.7182,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "CUPID-EQ",
-        "token": "18520",
-        "master_score": 0.8111,
-        "ai_score": 0.5,
-        "final_score": 0.7178,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "PTCIL-EQ",
-        "token": "16682",
-        "master_score": 0.8089,
-        "ai_score": 0.5,
-        "final_score": 0.7162,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "DPABHUSHAN-EQ",
-        "token": "936",
-        "master_score": 0.8078,
-        "ai_score": 0.5,
-        "final_score": 0.7155,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "GOODLUCK-EQ",
-        "token": "6125",
-        "master_score": 0.8069,
-        "ai_score": 0.5,
-        "final_score": 0.7148,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "OCCLLTD-EQ",
-        "token": "25918",
-        "master_score": 0.8047,
-        "ai_score": 0.5,
-        "final_score": 0.7133,
-        "cohort": "HYBRID_MATH_AI"
-    },
-    {
-        "symbol": "ONEPOINT-EQ",
-        "token": "9939",
-        "master_score": 0.803,
-        "ai_score": 0.5,
-        "final_score": 0.7121,
-        "cohort": "HYBRID_MATH_AI"
+        "symbol": "SHRINGARMS-EQ",
+        "token": "759093",
+        "master_score": 0.81
     },
     {
         "symbol": "BLUSPRING-EQ",
         "token": "757520",
-        "master_score": 0.8005,
-        "ai_score": 0.5,
-        "final_score": 0.7103,
-        "cohort": "HYBRID_MATH_AI"
+        "master_score": 0.809
     },
     {
-        "symbol": "IVP-EQ",
-        "token": "1681",
-        "master_score": 0.7983,
-        "ai_score": 0.5,
-        "final_score": 0.7088,
-        "cohort": "HYBRID_MATH_AI"
+        "symbol": "SBC-EQ",
+        "token": "6792",
+        "master_score": 0.7972
     },
     {
-        "symbol": "DHAMPURSUG-EQ",
-        "token": "857",
-        "master_score": 0.7982,
-        "ai_score": 0.5,
-        "final_score": 0.7087,
-        "cohort": "HYBRID_MATH_AI"
+        "symbol": "ELECON-EQ",
+        "token": "13643",
+        "master_score": 0.7968
+    },
+    {
+        "symbol": "ORIENTELEC-EQ",
+        "token": "2972",
+        "master_score": 0.792
+    },
+    {
+        "symbol": "DPABHUSHAN-EQ",
+        "token": "936",
+        "master_score": 0.7894
+    },
+    {
+        "symbol": "OAL-EQ",
+        "token": "10768",
+        "master_score": 0.7834
+    },
+    {
+        "symbol": "SUNTV-EQ",
+        "token": "13404",
+        "master_score": 0.7824
+    },
+    {
+        "symbol": "GALLANTT-EQ",
+        "token": "13337",
+        "master_score": 0.7814
+    },
+    {
+        "symbol": "SAMBHV-EQ",
+        "token": "757767",
+        "master_score": 0.7813
+    },
+    {
+        "symbol": "SEJALLTD-EQ",
+        "token": "7091",
+        "master_score": 0.7802
+    },
+    {
+        "symbol": "CUPID-EQ",
+        "token": "18520",
+        "master_score": 0.7795
+    },
+    {
+        "symbol": "PVRINOX-EQ",
+        "token": "13147",
+        "master_score": 0.7789
+    },
+    {
+        "symbol": "SHREEJISPG-EQ",
+        "token": "759448",
+        "master_score": 0.7781
+    },
+    {
+        "symbol": "CYIENTDLM-EQ",
+        "token": "17187",
+        "master_score": 0.7764
+    },
+    {
+        "symbol": "WSTCSTPAPR-EQ",
+        "token": "3799",
+        "master_score": 0.776
+    },
+    {
+        "symbol": "SMCGLOBAL-EQ",
+        "token": "2320",
+        "master_score": 0.7698
+    },
+    {
+        "symbol": "ROSSTECH-EQ",
+        "token": "27353",
+        "master_score": 0.7682
+    },
+    {
+        "symbol": "ONEPOINT-EQ",
+        "token": "9939",
+        "master_score": 0.7618
+    },
+    {
+        "symbol": "TFCILTD-EQ",
+        "token": "3466",
+        "master_score": 0.7605
+    },
+    {
+        "symbol": "HINDCOMPOS-EQ",
+        "token": "1372",
+        "master_score": 0.7601
+    },
+    {
+        "symbol": "GOODLUCK-EQ",
+        "token": "6125",
+        "master_score": 0.7595
+    },
+    {
+        "symbol": "UTTAMSUGAR-EQ",
+        "token": "13376",
+        "master_score": 0.7566
+    },
+    {
+        "symbol": "KROSS-EQ",
+        "token": "25252",
+        "master_score": 0.7549
+    },
+    {
+        "symbol": "THELEELA-EQ",
+        "token": "757014",
+        "master_score": 0.7519
+    },
+    {
+        "symbol": "CYIENT-EQ",
+        "token": "5748",
+        "master_score": 0.7516
+    },
+    {
+        "symbol": "KOTAKBANK-EQ",
+        "token": "1922",
+        "master_score": 0.7498
+    },
+    {
+        "symbol": "ADVANCE-EQ",
+        "token": "759402",
+        "master_score": 0.7493
+    },
+    {
+        "symbol": "KRISHANA-EQ",
+        "token": "12847",
+        "master_score": 0.7493
+    },
+    {
+        "symbol": "AVADHSUGAR-EQ",
+        "token": "21406",
+        "master_score": 0.7492
+    },
+    {
+        "symbol": "DELTACORP-EQ",
+        "token": "15044",
+        "master_score": 0.7487
+    },
+    {
+        "symbol": "63MOONS-EQ",
+        "token": "11868",
+        "master_score": 0.745
+    },
+    {
+        "symbol": "AVTNPL-EQ",
+        "token": "14008",
+        "master_score": 0.7449
+    },
+    {
+        "symbol": "IBULLSLTD-EQ",
+        "token": "24999",
+        "master_score": 0.7444
+    },
+    {
+        "symbol": "SVLL-EQ",
+        "token": "15121",
+        "master_score": 0.7439
+    },
+    {
+        "symbol": "ONWARDTEC-EQ",
+        "token": "2481",
+        "master_score": 0.7425
+    },
+    {
+        "symbol": "MAWANASUG-EQ",
+        "token": "17022",
+        "master_score": 0.7421
+    },
+    {
+        "symbol": "VALIANTORG-EQ",
+        "token": "330",
+        "master_score": 0.7404
+    },
+    {
+        "symbol": "WHEELS-EQ",
+        "token": "3766",
+        "master_score": 0.7391
+    },
+    {
+        "symbol": "TCPLPACK-EQ",
+        "token": "184",
+        "master_score": 0.7377
+    },
+    {
+        "symbol": "PTCIL-EQ",
+        "token": "16682",
+        "master_score": 0.7368
+    },
+    {
+        "symbol": "ICICIGI-EQ",
+        "token": "21770",
+        "master_score": 0.7367
+    },
+    {
+        "symbol": "PASUPTAC-EQ",
+        "token": "6045",
+        "master_score": 0.7346
+    },
+    {
+        "symbol": "AEROPLANE-EQ",
+        "token": "761670",
+        "master_score": 0.7343
+    },
+    {
+        "symbol": "GLOBAL-EQ",
+        "token": "1415",
+        "master_score": 0.7334
     }
 ]

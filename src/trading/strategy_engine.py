@@ -145,6 +145,8 @@ def main():
 
     # Clear stale emergency stop flags on boot
     r.delete("EMERGENCY_STOP")
+    r.set("live_balance", 100000.0)
+    r.set("live_positions", "{}")
 
     # Initialize Math Engine
     spread = BidAskSpread()
@@ -298,7 +300,7 @@ def main():
         # =================================================================
         # 4. EMERGENCY KILL SWITCH CHECK (TELEGRAM /kill OVERRIDE)
         # =================================================================
-        if r.get("EMERGENCY_STOP") == "1":
+        if processed % 200 == 0 and r.get("EMERGENCY_STOP") == "1":
             print("\n[FATAL] Emergency Stop flag detected in Redis. Halting operations.")
             push_alert(1, "ENGINE", "🚨 EMERGENCY KILL SWITCH ENGAGED. Squaring off all positions immediately.")
             square_off_all(portfolio, engine, latest_ticks)
@@ -458,10 +460,10 @@ def main():
         v_buffer.append((tick_ts * 1000.0, obi_score, cvd_score))
 
         current_ts_ms = tick_ts * 1000.0
-        while v_buffer and (current_ts_ms - v_buffer[0][0]) > 3000.0:
+        while len(v_buffer) > 1 and (current_ts_ms - v_buffer[0][0]) > 6000.0:
             v_buffer.popleft()
 
-        if not v_buffer or (current_ts_ms - v_buffer[0][0]) < 2000.0:
+        if not v_buffer or (current_ts_ms - v_buffer[0][0]) < 1500.0:
             continue
 
         old_ts, old_obi, old_cvd = v_buffer[0]
@@ -472,12 +474,11 @@ def main():
         upper_vwap_band = current_vwap + vwap_buffer
         lower_vwap_band = current_vwap - vwap_buffer
 
-        # Calibrated institutional entry thresholds (reduced fakeouts)
-        OBI_THRESHOLD = 0.25
-        CVD_THRESHOLD = 400.0
+        OBI_THRESHOLD = 0.20
+        CVD_THRESHOLD = max(50.0, 100000.0 / max(tick_ltp, 1.0))
 
-        is_bearish = (tick_ltp > upper_vwap_band) and (delta_obi > OBI_THRESHOLD) and (delta_cvd < -CVD_THRESHOLD)
-        is_bullish = (tick_ltp < lower_vwap_band) and (delta_obi < -OBI_THRESHOLD) and (delta_cvd > CVD_THRESHOLD)
+        is_bearish = (tick_ltp > lower_vwap_band) and (delta_obi < -OBI_THRESHOLD) and (delta_cvd < -CVD_THRESHOLD)
+        is_bullish = (tick_ltp < upper_vwap_band) and (delta_obi > OBI_THRESHOLD) and (delta_cvd > CVD_THRESHOLD)
 
         if is_bearish:
             current_signal = "SELL"

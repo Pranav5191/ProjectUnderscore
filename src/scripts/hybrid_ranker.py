@@ -146,7 +146,7 @@ class HybridRanker:
             bias = str(ai_eval.get("sentiment_bias", "NEUTRAL")).upper()
 
             # 1. Intensity Deadband Gate: Prevent low-intensity noise (<0.30) from altering math rank
-            if intensity < 0.30:
+            if intensity < 0.05:
                 effective_ai_score = 0.50
             else:
                 effective_ai_score = raw_ai_score
@@ -192,7 +192,7 @@ class HybridRanker:
             ai_score = float(ai_eval.get("ai_score", 0.50))
             bias = str(ai_eval.get("sentiment_bias", "NEUTRAL")).upper()
 
-            if intensity < 0.30:
+            if intensity < 0.05:
                 continue
 
             token = self.symbol_to_token.get(sym)
