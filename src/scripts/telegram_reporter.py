@@ -94,3 +94,24 @@ class TelegramReporter:
             return dump_path
         except subprocess.CalledProcessError:
             return None
+
+    def send_premarket_watchlist(self, watchlist_path: str = None):
+        path = watchlist_path or os.path.join(os.path.dirname(self.base_dir), "..", "target_ticks.json")
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, "r") as f:
+                items = json.load(f)
+            lines = [f"🚀 <b>Pre-Market Target Watchlist ({len(items)} Stocks)</b>\n"]
+            for i, item in enumerate(items[:15], 1):
+                sym = item.get("symbol", "")
+                score = item.get("final_score", item.get("master_score", 0.0))
+                cohort = item.get("cohort", "MATH")
+                lines.append(f"{i}. <code>{sym:<12}</code> | Score: <b>{score:.3f}</b> | {cohort}")
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            requests.post(url, json={"chat_id": self.chat_id, "text": "\n".join(lines), "parse_mode": "HTML"}, timeout=10)
+        except Exception as e:
+            print(f"[TELEGRAM WARN] Watchlist dispatch failed: {e}")
+
+    def dispatch(self):
+        self.send_premarket_watchlist()

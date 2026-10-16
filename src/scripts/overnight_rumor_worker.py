@@ -194,8 +194,7 @@ JSON format only:"""
                     if sym not in seen_symbols:
                         seen_symbols.add(sym)
                         entry["symbol"] = sym
-                        entry[" sentiment_bias"] = str(entry.get("sentiment_bias", "NEUTRAL")).upper().strip()
-                        entry["sentiment_bias"] = entry.pop(" sentiment_bias")
+                        entry["sentiment_bias"] = str(entry.get("sentiment_bias", "NEUTRAL")).upper().strip()
                         entry["rumor_intensity"] = float(entry.get("rumor_intensity", 0.5))
                         entry["reasoning"] = str(entry.get("reasoning", "Overnight news catalyst.")).strip()
                         results.append(entry)
@@ -212,7 +211,7 @@ JSON format only:"""
             if not extracted_any:
                 logger.info(f"[{idx}/{total_items}] No company-specific ticker identified.")
 
-            time.sleep(10.0)
+            time.sleep(1.5)
 
 if __name__ == "__main__":
     harvester = OvernightHarvester()

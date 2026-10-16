@@ -77,18 +77,19 @@ class CatalystCrawler:
             now_ist = datetime.now(IST)
 
         today_date = now_ist.date()
-        if today_date.weekday() == 0:
-            prev_mkt_date = today_date - timedelta(days=3)
-        elif today_date.weekday() == 6:
-            prev_mkt_date = today_date - timedelta(days=2)
-        else:
-            prev_mkt_date = today_date - timedelta(days=1)
-
-        start_dt = datetime.combine(prev_mkt_date, dtime(15, 30, 0), tzinfo=IST)
-        end_dt = datetime.combine(today_date, dtime(8, 35, 0), tzinfo=IST)
-
-        if now_ist > end_dt:
+        # If running after 3:30 PM IST, scan from today's close (or last 24h) up to now
+        if now_ist.time() >= dtime(15, 30, 0):
+            start_dt = datetime.combine(today_date - timedelta(days=1), dtime(15, 30, 0), tzinfo=IST)
             end_dt = now_ist
+        else:
+            if today_date.weekday() == 0:
+                prev_mkt_date = today_date - timedelta(days=3)
+            elif today_date.weekday() == 6:
+                prev_mkt_date = today_date - timedelta(days=2)
+            else:
+                prev_mkt_date = today_date - timedelta(days=1)
+            start_dt = datetime.combine(prev_mkt_date, dtime(15, 30, 0), tzinfo=IST)
+            end_dt = max(now_ist, datetime.combine(today_date, dtime(8, 35, 0), tzinfo=IST))
 
         return start_dt, end_dt
 

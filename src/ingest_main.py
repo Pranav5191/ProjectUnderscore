@@ -40,26 +40,8 @@ class IngestionService:
     async def initialize(self) -> None:
         logger.info("Initializing Standalone Data Ingestion Service...")
         
-        # Connect to the local database if needed for tick logging
-        await self._db_manager.connect()
-
-        # Initialize the WebSocket client
+        # AngelDataPipeline._on_data already normalizes and publishes to 'live_ticks' & 'market:ticks'
         self._ingester = AngelDataPipeline()
-        original_on_data = self._ingester._on_data
-
-        def bridged_on_data(wsapp: Any, message: dict[str, Any]) -> None:
-            # 1. Maintain the original ingestion logic (e.g., DB writes)
-            if original_on_data:
-                original_on_data(wsapp, message)
-            
-            # 2. Publish to Redis so StrategyEngine can process it asynchronously
-            try:
-                self._redis_client.publish("live_ticks", json.dumps(message))
-            except Exception as e:
-                logger.debug(f"Redis publish failed: {e}")
-
-        # Override the callback
-        self._ingester._on_data = bridged_on_data
 
     async def run(self) -> None:
         # Start Angel One WebSocket natively in a daemon thread so it doesn't block asyncio

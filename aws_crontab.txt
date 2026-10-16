@@ -1,0 +1,22 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+# 08:00 PM (Sun-Thu): Clear previous day's state & rumor cache
+0 20 * * 0-4 rm -f /home/ubuntu/project_pipeline/target_ticks.json
+0 20 * * 0-4 rm -f /home/ubuntu/project_pipeline/src/trading/portfolio_state.json
+0 20 * * 0-4 rm -f /home/ubuntu/project_pipeline/data/overnight_rumors.json
+
+# 10:00 PM (Sun-Thu): Mathematical Baseline Screener
+00 22 * * 0-4 /home/ubuntu/project_pipeline/run_screener.sh >> /home/ubuntu/project_pipeline/screener_startup.log 2>&1
+
+# 11:30 PM (Sun-Thu): Night Shift Rumor Harvester (tmux: rumor_worker)
+30 23 * * 0-4 /usr/bin/tmux kill-session -t rumor_worker 2>/dev/null; /usr/bin/tmux new-session -d -s rumor_worker "cd /home/ubuntu/project_pipeline && source venv/bin/activate && python src/scripts/overnight_rumor_worker.py >> /home/ubuntu/project_pipeline/rumor_startup.log 2>&1; exec bash"
+
+# 12:30 AM (Daily): System Maintenance
+30 0 * * * /home/ubuntu/project_pipeline/cleanup.sh
+
+# 08:00 AM (Mon-Fri): Pre-Market AI Orchestrator (tmux: ai_screen)
+0 8 * * 1-5 /usr/bin/tmux kill-session -t ai_screen 2>/dev/null; /usr/bin/tmux new-session -d -s ai_screen "cd /home/ubuntu/project_pipeline && source venv/bin/activate && python src/scripts/ai_orchestrator.py >> /home/ubuntu/project_pipeline/ai_orchestrator.log 2>&1; exec bash"
+
+# 08:55 AM (Mon-Fri): Start WebSocket Engine
+55 8 * * 1-5 /home/ubuntu/project_pipeline/restart_ws.sh >> /home/ubuntu/project_pipeline/cron_startup.log 2>&1

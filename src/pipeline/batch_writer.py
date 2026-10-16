@@ -62,6 +62,7 @@ async def main() -> None:
                     # Delete the processed ticks from Redis to free up RAM
                     await redis_client.xdel(stream_key, *msg_ids)
                     logger.info(f"Successfully processed and cleared {len(ticks)} ticks.")
+                    await asyncio.sleep(3.0)
                 except Exception as e:
                     logger.error(f"Database insertion failed: {e}")
                     await asyncio.sleep(5)  # Wait before retrying on DB failure
