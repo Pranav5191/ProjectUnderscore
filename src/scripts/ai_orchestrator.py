@@ -14,6 +14,7 @@ import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
+from src.utils.tg_notifier import send_tg_event
 from src.scripts.telegram_reporter import TelegramReporter
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
