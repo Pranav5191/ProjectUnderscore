@@ -1,106 +1,70 @@
-import time
 from src.trading.portfolio import PortfolioManager
 from src.trading.audit_logger import AuditLogger
+from src.trading.dhan_sandbox import DhanSandboxClient
 
 class ExecutionEngine:
     def __init__(self, portfolio: PortfolioManager, logger: AuditLogger):
         self.portfolio = portfolio
         self.logger = logger
         self.simulated_latency = 0.0
+        self.dhan_sandbox = DhanSandboxClient()
 
     def _calculate_indian_taxes(self, action: str, qty: int, price: float) -> float:
-        """Calculates exact Indian Equity Intraday taxes and dynamic brokerage."""
         turnover = float(qty * price)
-        
-        # 1. Dynamic Brokerage: Min ₹5, Max ₹20, or 0.1% of turnover
         calculated_brokerage = turnover * 0.001
         brokerage = max(5.0, min(20.0, calculated_brokerage))
-        
-        # 2. Exchange Transaction Charge (NSE: ~0.0030699%)
         exchange_txn_charge = turnover * 0.000030699
-        
-        # 3. SEBI Turnover Fee (₹10 per crore = 0.0001%)
         sebi_fee = turnover * 0.000001
-        
-        # 4. GST (18% on Brokerage + Exchange Charge + SEBI Fee)
         gst = (brokerage + exchange_txn_charge + sebi_fee) * 0.18
-        
-        # 5. STT (0.025% on the SELL side only for intraday equity)
         stt = (turnover * 0.00025) if action == 'SELL' else 0.0
-        
-        # 6. Stamp Duty (0.003% on the BUY side only)
         stamp_duty = (turnover * 0.00003) if action == 'BUY' else 0.0
-        
-        total_taxes = brokerage + exchange_txn_charge + sebi_fee + gst + stt + stamp_duty
-        return round(total_taxes, 2)
+        return round(brokerage + exchange_txn_charge + sebi_fee + gst + stt + stamp_duty, 2)
 
-    def execute_paper_trade(self, tick: dict, action: str, qty: int, trace_id: str = "NO_TRACE", bypass_margin: bool = False) -> str:
-        sec_id = tick.get('security_id')
+    def execute_paper_trade(
+        self, tick: dict, action: str, qty: int, trace_id: str = "NO_TRACE",
+        bypass_margin: bool = False, symbol: str = "", trigger_source: str = "", trigger_reason: str = ""
+    ) -> str:
+        sec_id = str(tick.get('security_id'))
         tick_timestamp = tick.get('timestamp')
-        
-        # ==========================================
-        # PRICING LOGIC: LIQUIDITY MAKER (LIMIT ORDER)
-        # ==========================================
+
         maker_price = (
             tick.get('bid') if action == 'BUY' else tick.get('ask')
         ) or tick.get('ltp') or tick.get('price') or 0.0
 
         if not maker_price or maker_price <= 0:
-            print(f"[EXECUTION WARNING] Invalid maker_price ({maker_price}) for {trace_id}. Skipping trade.")
             return "REJECTED_INVALID_PRICE"
 
-        margin_required = float(maker_price) * qty
+        notional_required = float(maker_price) * qty
         current_pos = self.portfolio.positions.get(sec_id)
-
-        # Determine if this is a closing/reducing trade (opposite side of existing position)
         is_closing_trade = current_pos is not None and current_pos['side'] != action
 
         if not bypass_margin and not is_closing_trade:
-            # ==========================================
-            # GATE 1: Margin Check (only for new entries or pyramiding)
-            # ==========================================
-            # Assume up to 5x Intraday Leverage for available buying power calculation
-            margin_used = sum((pos['qty'] * pos['avg_price']) / 5.0 for pos in self.portfolio.positions.values())
-            available_cash = self.portfolio.current_balance - margin_used
-            
-            # If we need Rs. 10000 of stock, we only need Rs. 2000 of cash margin
-            cash_needed = margin_required / 5.0
-            
-            if available_cash < cash_needed:
-                return "REJECTED_INSUFFICIENT_FUNDS"
+            allowed, reject_reason = self.portfolio.can_take_trade(sec_id, action, notional_required)
+            if not allowed:
+                return reject_reason
 
-            # ==========================================
-            # GATE 2: Secondary Portfolio Limits
-            # ==========================================
-            # If it's a new position (not Pyramiding), check standard portfolio limits
-            if not current_pos:
-                if not self.portfolio.can_take_trade(sec_id, action, margin_required):
-                    return "REJECTED_PORTFOLIO_LIMITS"
+        fill_price = float(maker_price)
+        latency_ms = self.simulated_latency * 1000.0
 
-        # ==========================================
-        # EXECUTION (MAKER)
-        # ==========================================
-        slippage = 0.0
-        fill_price = maker_price
+        if self.dhan_sandbox.is_enabled():
+            sbx_res = self.dhan_sandbox.place_intraday_order(
+                sec_id=sec_id, symbol=symbol or f"TOK_{sec_id}",
+                action=action, qty=qty, price=fill_price, trace_id=trace_id
+            )
+            latency_ms = sbx_res.get("latency_ms", latency_ms)
+            trigger_reason = f"{trigger_reason} | {sbx_res.get('order_id', '')}"
 
-        # Calculate exact Indian market taxes for this leg
         transaction_taxes = self._calculate_indian_taxes(action, qty, fill_price)
-
-        # Update portfolio & calculate gross realized PnL
-        gross_booked_pnl = self.portfolio.update_position(sec_id, action, qty, fill_price)
-        
-        # Physically deduct taxes from the portfolio balance instantly
-        self.portfolio.current_balance -= transaction_taxes
-        
-        # Net PnL reflects the true cost of doing business
-        net_booked_pnl = gross_booked_pnl - transaction_taxes
-        total_balance = self.portfolio.current_balance
-
-        # Log to your CSV Vault
-        self.logger.log_trade(
-            trace_id, tick_timestamp, sec_id, action, fill_price, qty, 
-            self.simulated_latency * 1000, slippage, 
-            gross_booked_pnl, transaction_taxes, net_booked_pnl, total_balance
+        gross_booked_pnl = self.portfolio.update_position(
+            sec_id, action, qty, fill_price, symbol=symbol, trigger_source=trigger_source
         )
+        self.portfolio.current_balance -= transaction_taxes
+        net_booked_pnl = gross_booked_pnl - transaction_taxes
 
+        self.logger.log_trade(
+            trace_id, tick_timestamp, sec_id, action, fill_price, qty,
+            latency_ms, 0.0,
+            gross_booked_pnl, transaction_taxes, net_booked_pnl, self.portfolio.current_balance,
+            symbol=symbol, trigger_source=trigger_source, trigger_reason=trigger_reason
+        )
         return "EXECUTED"

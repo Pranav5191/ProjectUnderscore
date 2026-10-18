@@ -201,7 +201,7 @@ class PreMarketAIOrchestrator:
             # Step 6: Dispatch Pre-Market Intelligence Briefing to Telegram
             logger.info("[STEP 6] Dispatching pre-market audit to Telegram...")
             try:
-                target_file = "/home/ubuntu/project_pipeline/target_ticks.json"
+                target_file = self.target_ticks_path
                 logger.info(f"Triggering Telegram reporter for {target_file}...")
                 from src.scripts.telegram_reporter import TelegramReporter
                 TelegramReporter().send_ai_catalyst_briefing(target_file)

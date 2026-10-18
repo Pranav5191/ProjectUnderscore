@@ -72,7 +72,7 @@ class OvernightHarvester:
 
 class RumorEvaluator:
     def __init__(self):
-        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+        self.gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
         self.groq_url = "https://api.groq.com/openai/v1/chat/completions"
         self.gemini_exhausted = False
 

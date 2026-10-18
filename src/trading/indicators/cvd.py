@@ -5,7 +5,8 @@ class CumulativeVolumeDelta(BaseIndicator):
     def __init__(self, window: int = 500):
         super().__init__("CVD")
         self.window = window
-        self._deltas = {}  # Per-security rolling delta buffer
+        self._deltas = {}
+        self._prev_ltp = {}
 
     def update(self, tick: dict):
         sec_id = str(tick.get('security_id'))
@@ -13,25 +14,28 @@ class CumulativeVolumeDelta(BaseIndicator):
 
         if sec_id not in self._deltas:
             self._deltas[sec_id] = deque(maxlen=self.window)
+            self._prev_ltp[sec_id] = 0.0
 
-        ltp = tick.get('ltp', 0.0)
-        ltq = tick.get('ltq', 0)
-        bid = tick.get('bid', 0.0)
-        ask = tick.get('ask', 0.0)
+        ltp = float(tick.get('ltp', 0.0))
+        ltq = int(tick.get('ltq', 0))
+        bid = float(tick.get('bid', 0.0))
+        ask = float(tick.get('ask', 0.0))
 
-        # Protect against dead ticks missing core data
-        if not sec_id or bid == 0.0 or ask == 0.0 or ltp == 0.0 or ltq == 0:
+        if not sec_id or ltp <= 0.0 or ltq <= 0:
             return
 
-        mid = (bid + ask) / 2.0
+        mid = (bid + ask) / 2.0 if (bid > 0 and ask > 0) else ltp
+        prev_p = self._prev_ltp[sec_id]
+        self._prev_ltp[sec_id] = ltp
 
-        # Determine aggression based on where the trade executed relative to the mid-price
         if ltp > mid:
-            delta = ltq   # Buyer crossed the spread
+            delta = ltq
         elif ltp < mid:
-            delta = -ltq  # Seller crossed the spread
+            delta = -ltq
+        elif prev_p > 0 and ltp != prev_p:
+            delta = ltq if ltp > prev_p else -ltq
         else:
-            delta = 0     # Trade at mid — ambiguous, ignore
+            delta = 0
 
         self._deltas[sec_id].append(delta)
         self.values[sec_id] = sum(self._deltas[sec_id])

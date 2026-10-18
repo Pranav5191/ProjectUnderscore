@@ -43,7 +43,21 @@ class HybridRanker:
         self._load_symbol_metadata()
 
     def _load_symbol_metadata(self):
-        """Loads symbol->token, master_score, and price/turnover context from live_screener_rankings.csv."""
+        """Loads symbol->token from master_history.db first (guarantees AI stocks resolve tokens), then overlays CSV."""
+        if os.path.exists(self.db_path):
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cur = conn.cursor()
+                cur.execute("SELECT DISTINCT symbol, token FROM historical_data")
+                for sym_raw, tok_raw in cur.fetchall():
+                    s_clean = str(sym_raw).strip().upper()
+                    if not s_clean.endswith("-EQ"):
+                        s_clean = f"{s_clean}-EQ"
+                    self.symbol_to_token[s_clean] = str(tok_raw).strip()
+                conn.close()
+            except Exception as e:
+                logger.warning(f"SQLite symbol map preload warning: {e}")
+
         if os.path.exists(self.csv_rankings_path) and os.path.getsize(self.csv_rankings_path) > 0:
             try:
                 df = pd.read_csv(self.csv_rankings_path)
