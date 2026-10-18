@@ -84,10 +84,10 @@ def fetch_60d_1m_candles(sc, token: str, end_dt: datetime) -> pd.DataFrame:
             "fromdate": from_str,
             "todate": to_str
         }
-        resp = sc.getCandleData(params)
-        time.sleep(0.42)  # Respect 3 req/sec Angel One rate limit
-        if isinstance(resp, dict) and resp.get("data"):
-            all_rows.extend(resp["data"])
+        from src.utils.api_tracker import fetch_candles_with_fallback
+        rows = fetch_candles_with_fallback(sc, str(token), "ONE_MINUTE", from_str, to_str)
+        if rows:
+            all_rows.extend(rows)
 
     if not all_rows:
         return pd.DataFrame()
@@ -208,8 +208,7 @@ def train_all_bots(limit: int = 25):
     )
 
     try:
-        seed_macro_redis()
-
+        
         if not os.path.exists(TARGET_TICKS_PATH):
             raise FileNotFoundError(f"{TARGET_TICKS_PATH} not found.")
 
@@ -277,17 +276,30 @@ def train_all_bots(limit: int = 25):
                             bst.save_model(model_file)
 
                             sl_pct = float(np.clip(med_atr_pct * 4.0, 0.006, 0.018))
+                            warmup_bars = [
+                                {
+                                    "open": round(float(r["open"]), 2),
+                                    "high": round(float(r["high"]), 2),
+                                    "low": round(float(r["low"]), 2),
+                                    "close": round(float(r["close"]), 2),
+                                    "vol": int(max(1, r["vol"]))
+                                }
+                                for _, r in df_2m.tail(15).iterrows()
+                            ]
+                            min_rupee_cvd = max(50.0, 100000.0 / max(med_price, 1.0))
                             profile.update({
                                 "median_price": round(med_price, 2),
                                 "atr_2m_inr": round(med_atr_inr, 4),
                                 "atr_2m_pct": round(med_atr_pct, 5),
-                                "cvd_threshold": round(float(np.clip(med_vol_2m * 0.10, 30.0, 2500.0)), 1),
-                                "sl_pct": round(sl_pct, 4),
-                                "tp_pct": round(sl_pct * 2.0, 4),
-                                "breakeven_pct": round(sl_pct * 0.65, 4),
-                                "partial_tp_pct": round(sl_pct * 1.0, 4),
-                                "vwap_buffer_pct": round(float(np.clip(med_atr_pct * 0.75, 0.001, 0.0035)), 4),
-                                "has_ml_model": True
+                                "cvd_threshold": round(max(min_rupee_cvd, float(np.clip(med_vol_2m * 0.12, 50.0, 2500.0))), 1),
+                                "obi_threshold": 0.20,
+                                "sl_pct": 0.0095,
+                                "tp_pct": 0.0220,
+                                "breakeven_pct": 0.0075,
+                                "partial_tp_pct": 0.012,
+                                "vwap_buffer_pct": 0.0020,
+                                "has_ml_model": True,
+                                "warmup_bars": warmup_bars
                             })
                             trained_count += 1
                             print(f"  [{idx:02d}/{len(targets)}] 🤖 {symbol:<15} (#{token:<6}) | 60d 2m Bars: {len(df_2m):<5} | CVD_Thr: {profile['cvd_threshold']:<6} | SL: {profile['sl_pct']*100:.2f}%")

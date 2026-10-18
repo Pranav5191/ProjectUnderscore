@@ -259,6 +259,16 @@ class MasterScreener:
 
         results_df = pd.DataFrame(results)
         if not results_df.empty:
+            for cat, weight in self.category_weights.items():
+                col = f"CAT_{cat.upper()}"
+                if col in results_df.columns:
+                    results_df[f"{col}_PCT"] = results_df[col].rank(pct=True)
+            pct_cols = [f"CAT_{c.upper()}_PCT" for c in self.category_weights if f"CAT_{c.upper()}_PCT" in results_df.columns]
+            if len(pct_cols) == len(self.category_weights):
+                results_df["raw_master_score"] = results_df["master_score"]
+                results_df["master_score"] = sum(
+                    results_df[f"CAT_{cat.upper()}_PCT"] * w for cat, w in self.category_weights.items()
+                ).round(4)
             results_df = results_df.sort_values(by="master_score", ascending=False).reset_index(drop=True)
 
         return results_df

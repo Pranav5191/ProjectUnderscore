@@ -70,7 +70,7 @@ class CatalystEvaluator:
                 ]
 
                 chain = []
-                for pref in ["gemini-3.8-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-flash-lite-latest"]:
+                for pref in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest", "gemini-flash-lite-latest"]:
                     if pref in available and pref not in chain:
                         chain.append(pref)
                 for cand in active_candidates:
@@ -112,13 +112,13 @@ class CatalystEvaluator:
             import json
             import re
             
-            logger.info(f"Executing GROQ Fallback (Batch of {getattr(self, 'batch_size', 8)}) on qwen/qwen3.8-27b...")
+            logger.info(f"Executing GROQ Fallback (Batch of {getattr(self, 'batch_size', 8)}) on llama-3.3-70b-versatile...")
             
             # Using your rubric but explicitly asking for JSON without forcing the API mode
             system_msg = BATCH_SYSTEM_PROMPT + "\n\nCRITICAL INSTRUCTION: You must output ONLY valid JSON. The output must be an object with a single key 'evaluations' containing the array of results. Do not include markdown formatting or explanation text."
             
             response = self.groq_client.chat.completions.create(
-                model="qwen/qwen3.8-27b",
+                model="llama-3.3-70b-versatile",
                 messages=[
                     {"role": "system", "content": system_msg},
                     {"role": "user", "content": user_prompt}
@@ -208,10 +208,10 @@ class CatalystEvaluator:
         # TIER 3: QWEN MODEL
         if parsed_list is None and self.groq_client:
             try:
-                logger.info("[TIER 3] Attempting Qwen model: qwen/qwen3.8-27b...")
+                logger.info("[TIER 3] Attempting Qwen model: llama-3.3-70b-versatile...")
                 system_msg = BATCH_SYSTEM_PROMPT + "\n\nCRITICAL: Return ONLY a valid JSON object. Top-level key must be 'evaluations'."
                 response = self.groq_client.chat.completions.create(
-                    model="qwen/qwen3.8-27b",
+                    model="llama-3.3-70b-versatile",
                     messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": user_prompt}],
                     response_format={"type": "json_object"},
                     timeout=30.0

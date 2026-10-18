@@ -75,32 +75,15 @@ class MasterIngester:
                 "todate": to_date
             }
 
-            max_retries = 2
-            for attempt in range(max_retries):
-                try:
-                    response = self.api.getCandleData(payload)
-                    time.sleep(1) 
-                    
-                    if response and not response.get('status'):
-                        error_msg = response.get('message', '').lower()
-                        if 'limit' in error_msg or 'throttle' in error_msg:
-                            print(f"[WARNING] API Rate Limit on {symbol}. Backing off 5s...")
-                            time.sleep(5.0)
-                            continue
-                    
-                    data = response.get('data') if response else None
-                    if data:
-                        for row in data:
-                            timestamp_iso = row[0][:10]
-                            staged_rows.append((
-                                token, symbol, timestamp_iso, 
-                                row[1], row[2], row[3], row[4], row[5]
-                            ))
-                    break 
-
-                except Exception as e:
-                    print(f"[API ERROR] {symbol} Fetch Failed: {e}")
-                    time.sleep(1.0)
+            from src.utils.api_tracker import fetch_candles_with_fallback
+            data = fetch_candles_with_fallback(self.api, token, "ONE_DAY", from_date, to_date)
+            if data:
+                for row in data:
+                    timestamp_iso = str(row[0])[:10]
+                    staged_rows.append((
+                        token, symbol, timestamp_iso,
+                        row[1], row[2], row[3], row[4], row[5]
+                    ))
 
         if staged_rows:
             print(f"\n[SYSTEM] Network Loop Complete. Executing Atomic Disk Write for {len(staged_rows)} rows...")
