@@ -194,14 +194,13 @@ class StockMicroBot:
                 pass
 
         if self.model is None or self.last_ml_eval.get("regime") is None:
-         return 1 if cvd >= 0 else -1
+            return 1 if cvd >= 0 else -1
         p_bull = self.last_ml_eval.get("prob_bull", 0.33)
         p_bear = self.last_ml_eval.get("prob_bear", 0.33)
-        if (p_bear - p_bull) > 0.20:
-            return -1
-        if (p_bull - p_bear) > 0.20:
-            return 1
-        return 1 if cvd >= 0 else -1
+        p_chop = self.last_ml_eval.get("prob_chop", 0.34)
+        if p_chop >= 0.48:
+            return 0
+        return 1 if p_bull >= p_bear else -1
 
 
 def sync_live_redis_state(
@@ -330,7 +329,7 @@ def main():
     max_slots = int(os.getenv("MAX_CONCURRENT_POSITIONS", 4))
     portfolio = PortfolioManager(
         starting_balance=100000.0,
-        max_allocation_pct=0.20,
+        max_allocation_pct=0.25,
         max_loss_pct=0.02,
         max_concurrent_positions=max_slots
     )
@@ -353,8 +352,8 @@ def main():
     last_trade_time = {}
     stock_entries_today = {}
     stopped_out_stocks = set()
-    breakeven_locked = set()
-    partial_tp_executed = set()
+    ratchet_stage = {}       # sec_id -> 0, 1 (+0.75%), 2 (+1.20%), 3 (+1.75%)
+    position_open_time = {}  # sec_id -> entry timestamp in seconds
 
     COOLDOWN_SECONDS = 30
     signal_streak = {}
@@ -494,127 +493,100 @@ def main():
         sym = bot.symbol
 
         # =================================================================
-        # 5. POSITION MANAGEMENT (SL=1.0%, TP=2.2%, BE=0.80%->+0.50%, PARTIAL=1.20%)
+        # 5. 100%-SIZE 3-STAGE PROFIT RATCHET + 40-MIN TAX+0.10 SCRATCH TP
         # =================================================================
         current_pos = portfolio.positions.get(sec_id)
         if current_pos:
             entry_price = current_pos['avg_price']
             pos_qty = current_pos['qty']
             side = current_pos['side']
+            now_sec = tick_epoch_ms / 1000.0
 
-            SL_PERCENT = 0.012
-            TP_PERCENT = 0.024
-            BREAKEVEN_TRIGGER = 0.0075
-            PARTIAL_TP_TRIGGER = 0.0120
-            TAX_OFFSET_PCT = 0.0025
-            PARTIAL_LOCK_PCT = 0.0025
+            SL_PERCENT = 0.0090          # -0.90% tight initial stop-loss
+            TP_PERCENT = 0.0240          # +2.40% full home-run target on 100% shares
+            MAX_STAGNANT_SECONDS = 2400  # After 40 mins in stage 0, set TP to exact taxes + Rs.0.10/share
+
+            stage = ratchet_stage.get(sec_id, 0)
+            move_pct = ((tick_ltp - entry_price) / entry_price) if side == 'BUY' else ((entry_price - tick_ltp) / entry_price)
+
+            if move_pct >= 0.0175 and stage < 3:
+                stage = 3
+                ratchet_stage[sec_id] = 3
+            elif move_pct >= 0.0120 and stage < 2:
+                stage = 2
+                ratchet_stage[sec_id] = 2
+            elif move_pct >= 0.0075 and stage < 1:
+                stage = 1
+                ratchet_stage[sec_id] = 1
+
+            if stage == 3:
+                lock_offset = 0.0150     # Stage 3: Locks +1.50% on 100% qty
+            elif stage == 2:
+                lock_offset = 0.0100     # Stage 2: Locks +1.00% on 100% qty (no 50% split dilution)
+            elif stage == 1:
+                lock_offset = 0.0050     # Stage 1: Locks +0.50% on 100% qty (~2x tax cover)
+            else:
+                lock_offset = -SL_PERCENT
+
+            exit_action = 'SELL' if side == 'BUY' else 'BUY'
+            held_seconds = now_sec - position_open_time.get(sec_id, now_sec)
+            is_stagnant_40m = (stage == 0) and (held_seconds >= MAX_STAGNANT_SECONDS)
+
+            if is_stagnant_40m:
+                entry_tax = engine._calculate_indian_taxes(side, pos_qty, entry_price)
+                exit_tax = engine._calculate_indian_taxes(exit_action, pos_qty, tick_ltp)
+                scratch_move_per_share = ((entry_tax + exit_tax) / max(pos_qty, 1)) + 0.10
 
             if side == 'BUY':
-                tp_price = entry_price * (1.0 + TP_PERCENT)
-                base_sl_price = entry_price * (1.0 - SL_PERCENT)
+                tp_price = (entry_price + scratch_move_per_share) if is_stagnant_40m else (entry_price * (1.0 + TP_PERCENT))
+                sl_price = entry_price * (1.0 + lock_offset)
+                hit_tp = tick_ltp >= tp_price
+                hit_sl = tick_ltp <= sl_price
+                gross_leg = (tick_ltp - entry_price) * pos_qty
+            else:
+                tp_price = (entry_price - scratch_move_per_share) if is_stagnant_40m else (entry_price * (1.0 - TP_PERCENT))
+                sl_price = entry_price * (1.0 - lock_offset)
+                hit_tp = tick_ltp <= tp_price
+                hit_sl = tick_ltp >= sl_price
+                gross_leg = (entry_price - tick_ltp) * pos_qty
 
-                if tick_ltp >= entry_price * (1.0 + BREAKEVEN_TRIGGER):
-                    breakeven_locked.add(sec_id)
-
-                if sec_id not in partial_tp_executed and tick_ltp >= entry_price * (1.0 + PARTIAL_TP_TRIGGER) and pos_qty >= 2:
-                    scale_qty = max(1, int(pos_qty * 0.5))
-                    trace_id = f"{sec_id}-{tick_epoch_ms}-{uuid.uuid4().hex[:6]}"
-                    engine.execute_paper_trade(
-                        tick, action='SELL', qty=scale_qty, trace_id=trace_id,
-                        bypass_margin=True, symbol=sym, trigger_source="POSITION_MGR", trigger_reason="PARTIAL_TP_+1.20%"
-                    )
-                    partial_tp_executed.add(sec_id)
-                    gross_leg = (tick_ltp - entry_price) * scale_qty
-                    push_alert(
-                        3, "EXECUTION",
-                        f"⚡ <b>PARTIAL TP (Long)</b>: <code>{sym}</code> | Scaled out {scale_qty}x @ ₹{tick_ltp:.2f} | Gross: ₹{gross_leg:+.2f}"
-                    )
-                    continue
-
-                if sec_id in breakeven_locked:
-                    lock_pct = PARTIAL_LOCK_PCT if sec_id in partial_tp_executed else TAX_OFFSET_PCT
-                    sl_price = entry_price * (1.0 + lock_pct)
+            if hit_tp or hit_sl:
+                trace_id = f"{sec_id}-{tick_epoch_ms}-{uuid.uuid4().hex[:6]}"
+                if hit_tp and is_stagnant_40m:
+                    reason = "TAX_FREE_40M_SCRATCH"
+                elif hit_tp:
+                    reason = "FINAL_TAKE_PROFIT"
+                elif stage >= 2:
+                    reason = f"RATCHET_S{stage}_+{lock_offset*100:.2f}%"
+                elif stage == 1:
+                    reason = "BREAKEVEN_SL_+0.50%"
                 else:
-                    sl_price = base_sl_price
+                    reason = "STOP_LOSS"
 
-                if tick_ltp >= tp_price or tick_ltp <= sl_price:
-                    trace_id = f"{sec_id}-{tick_epoch_ms}-{uuid.uuid4().hex[:6]}"
-                    reason = "FINAL_TAKE_PROFIT" if tick_ltp >= tp_price else ("BREAKEVEN_SL" if sec_id in breakeven_locked else "STOP_LOSS")
-                    if reason == "STOP_LOSS": stopped_out_stocks.add(sec_id)
-                    engine.execute_paper_trade(
-                        tick, action='SELL', qty=pos_qty, trace_id=trace_id,
-                        bypass_margin=True, symbol=sym, trigger_source="POSITION_MGR", trigger_reason=reason
-                    )
-                    if sec_id in portfolio.positions:
-                        del portfolio.positions[sec_id]
-                    breakeven_locked.discard(sec_id)
-                    partial_tp_executed.discard(sec_id)
-                    last_trade_time[sec_id] = tick_epoch_ms / 1000.0
-                    gross_leg = (tick_ltp - entry_price) * pos_qty
-                    push_alert(
-                        3, "EXECUTION",
-                        f"🛑 <b>{reason} (Long)</b>: <code>{sym}</code> | Closed {pos_qty}x @ ₹{tick_ltp:.2f} | Gross: ₹{gross_leg:+.2f}"
-                    )
-                    continue
-
-            elif side == 'SELL':
-                tp_price = entry_price * (1.0 - TP_PERCENT)
-                base_sl_price = entry_price * (1.0 + SL_PERCENT)
-
-                if tick_ltp <= entry_price * (1.0 - BREAKEVEN_TRIGGER):
-                    breakeven_locked.add(sec_id)
-
-                if sec_id not in partial_tp_executed and tick_ltp <= entry_price * (1.0 - PARTIAL_TP_TRIGGER) and pos_qty >= 2:
-                    scale_qty = max(1, int(pos_qty * 0.5))
-                    trace_id = f"{sec_id}-{tick_epoch_ms}-{uuid.uuid4().hex[:6]}"
-                    engine.execute_paper_trade(
-                        tick, action='BUY', qty=scale_qty, trace_id=trace_id,
-                        bypass_margin=True, symbol=sym, trigger_source="POSITION_MGR", trigger_reason="PARTIAL_TP_-1.20%"
-                    )
-                    partial_tp_executed.add(sec_id)
-                    gross_leg = (entry_price - tick_ltp) * scale_qty
-                    push_alert(
-                        3, "EXECUTION",
-                        f"⚡ <b>PARTIAL TP (Short)</b>: <code>{sym}</code> | Scaled out {scale_qty}x @ ₹{tick_ltp:.2f} | Gross: ₹{gross_leg:+.2f}"
-                    )
-                    continue
-
-                if sec_id in breakeven_locked:
-                    lock_pct = PARTIAL_LOCK_PCT if sec_id in partial_tp_executed else TAX_OFFSET_PCT
-                    sl_price = entry_price * (1.0 - lock_pct)
-                else:
-                    sl_price = base_sl_price
-
-                if tick_ltp <= tp_price or tick_ltp >= sl_price:
-                    trace_id = f"{sec_id}-{tick_epoch_ms}-{uuid.uuid4().hex[:6]}"
-                    reason = "FINAL_TAKE_PROFIT" if tick_ltp <= tp_price else ("BREAKEVEN_SL" if sec_id in breakeven_locked else "STOP_LOSS")
-                    if reason == "STOP_LOSS": stopped_out_stocks.add(sec_id)
-                    engine.execute_paper_trade(
-                        tick, action='BUY', qty=pos_qty, trace_id=trace_id,
-                        bypass_margin=True, symbol=sym, trigger_source="POSITION_MGR", trigger_reason=reason
-                    )
-                    if sec_id in portfolio.positions:
-                        del portfolio.positions[sec_id]
-                    breakeven_locked.discard(sec_id)
-                    partial_tp_executed.discard(sec_id)
-                    last_trade_time[sec_id] = tick_epoch_ms / 1000.0
-                    gross_leg = (entry_price - tick_ltp) * pos_qty
-                    push_alert(
-                        3, "EXECUTION",
-                        f"🛑 <b>{reason} (Short)</b>: <code>{sym}</code> | Closed {pos_qty}x @ ₹{tick_ltp:.2f} | Gross: ₹{gross_leg:+.2f}"
-                    )
-                    continue
+                engine.execute_paper_trade(
+                    tick, action=exit_action, qty=pos_qty, trace_id=trace_id,
+                    bypass_margin=True, symbol=sym, trigger_source="POSITION_MGR", trigger_reason=reason
+                )
+                if sec_id in portfolio.positions:
+                    del portfolio.positions[sec_id]
+                ratchet_stage.pop(sec_id, None)
+                position_open_time.pop(sec_id, None)
+                last_trade_time[sec_id] = now_sec
+                push_alert(
+                    3, "EXECUTION",
+                    f"🛑 <b>{reason} ({side})</b>: <code>{sym}</code> | Closed {pos_qty}x @ ₹{tick_ltp:.2f} | Gross: ₹{gross_leg:+.2f}"
+                )
             continue
         else:
-            breakeven_locked.discard(sec_id)
-            partial_tp_executed.discard(sec_id)
+            ratchet_stage.pop(sec_id, None)
+            position_open_time.pop(sec_id, None)
 
 
         # =================================================================
         # 6. HIGH-PRECISION ENTRY LOGIC + MICRO-BOT AUTHORITY + AUTOPSY
         # =================================================================
-        # Stop taking new entries after 2:00 PM to prevent 3:14 PM EOD square-off drag
-        if current_atr == 0.0 or current_time >= time(14, 25, 0):
+        # Wait until 09:18 AM for VWAP/ATR stabilization; stop new entries after 2:25 PM
+        if current_atr == 0.0 or current_time < time(9, 18, 0) or current_time >= time(14, 25, 0):
             continue
 
         if stock_entries_today.get(sec_id, 0) >= 2:
@@ -724,8 +696,8 @@ def main():
             autopsy_records.append(autopsy_entry)
             continue
 
-        base_slot_capital = (portfolio.current_balance / max_slots) * 0.70
-        target_capital = min(15000.0, max(8000.0, base_slot_capital * (0.75 + 0.50 * confluence_score)))
+        base_slot_capital = (portfolio.current_balance / max_slots) * 0.92
+        target_capital = min(24500.0, max(18000.0, base_slot_capital * (0.85 + 0.30 * confluence_score)))
 
         ideal_qty = int(target_capital // tick_ltp)
         max_afford_qty = int((free_cash * 5.0) // tick_ltp)
@@ -749,6 +721,8 @@ def main():
 
             if status == "EXECUTED":
                 last_trade_time[sec_id] = tick_ts
+                position_open_time[sec_id] = tick_ts
+                ratchet_stage[sec_id] = 0
                 stock_entries_today[sec_id] = stock_entries_today.get(sec_id, 0) + 1
                 signal_streak[sec_id] = (None, 0)
                 push_alert(
