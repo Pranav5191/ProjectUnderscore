@@ -18,6 +18,13 @@ import argparse
 import redis
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
+import sqlite3
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+from src.ml.bot_trainer import build_sqlite_fallback_profile, FEATURE_COLS, fetch_60d_1m_candles, engineer_2m_features
+from src.auth.angel_auth import AngelAuthenticator
+
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -33,7 +40,7 @@ PORTFOLIO_STATE_FILE = os.path.join(PROJECT_ROOT, "src", "trading", "portfolio_s
 BOTS_DIR = os.path.join(PROJECT_ROOT, "models", "bots")
 TARGET_TICKS_FILE = os.path.join(PROJECT_ROOT, "target_ticks.json")
 IST = timezone(timedelta(hours=5, minutes=30))
-EXCLUDED_TOKENS = {"99926000", "99926009", "99926002", "26000", "26009", "26014"}
+EXCLUDED_TOKENS = {"99926000", "99926009", "99926002", "26000", "26009", "26014", "2885", "1333"}
 
 
 def find_backup_file(date_str: str, explicit_path: str = None) -> str:
@@ -136,12 +143,7 @@ def ensure_bots_for_replay(security_ids: set[int], ticks: list[dict] = None):
     into profile_<token>.json (using SQLite history + intraday tick bars) so
     StockMicroBot ML inference is active from 09:15:00 AM.
     """
-    import sqlite3
-    import numpy as np
-    import pandas as pd
-    import lightgbm as lgb
-    from src.ml.bot_trainer import build_sqlite_fallback_profile, FEATURE_COLS
-
+    sc = None
     os.makedirs(BOTS_DIR, exist_ok=True)
     db_path = os.path.join(PROJECT_ROOT, "master_history.db")
 
@@ -212,7 +214,20 @@ def ensure_bots_for_replay(security_ids: set[int], ticks: list[dict] = None):
         prof["breakeven_pct"] = 0.0075
         prof["partial_tp_pct"] = 0.012
         prof["vwap_buffer_pct"] = 0.0020
+        if not (os.path.exists(model_path) and os.path.getsize(model_path) > 500):
+            try:
+                if sc is None: auth = AngelAuthenticator(); auth.generate_session(); sc = auth.smart_connect
+                end_dt = datetime.fromtimestamp(ticks[0]["timestamp"] / 1000, tz=IST) if ticks else datetime.now()
+                df_2m = engineer_2m_features(fetch_60d_1m_candles(sc, tok, end_dt))
+                if len(df_2m) >= 150:
+                    fwd = (df_2m["close"].shift(-8) - df_2m["close"]) / df_2m["close"]
+                    y = np.select([fwd.iloc[:-8] < -0.004, fwd.iloc[:-8] > 0.004], [0, 2], default=1).astype(int)
+                    lgb.train({"objective": "multiclass", "num_class": 3, "max_depth": 4, "num_leaves": 15, "learning_rate": 0.05, "verbose": -1, "seed": 42}, lgb.Dataset(df_2m[FEATURE_COLS].iloc[:-8].values.astype(np.float32), label=y, feature_name=FEATURE_COLS), num_boost_round=60).save_model(model_path)
+                    prof["warmup_bars"] = df_2m[["open", "high", "low", "close", "vol"]].tail(15).to_dict("records")
+            except Exception as e:
+                print(f"  [WARN] Angel API 60d train skipped for {tok}: {e}")
         prof["has_ml_model"] = os.path.exists(model_path) and os.path.getsize(model_path) > 500
+
         if prof["has_ml_model"]:
             ml_ready += 1
 
