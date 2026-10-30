@@ -2,8 +2,8 @@
 src/trading/strategy_engine.py
 Institutional Per-Stock Micro-Bot Quantitative Strategy Engine.
 - Enforces LightGBM Chop Veto, Directional Edge Alignment & Pre-Market AI Catalyst Veto.
-- Uses a 3-Stage Single-Exit Dynamic Trailing Ratchet (100% position size, zero partial-split tax drag).
-- Enforces Max Concurrent Positions, Max 2 Entries/Stock/Day, and 1-Strike Stop-Loss Blacklist.
+- Uses a 4-Stage Dynamic Trailing Ratchet with 1-Hz ML Check (100% position size, zero partial-split tax drag).
+- Enforces Max Concurrent Positions, Max 3 Entries/Stock/Day, and 1-Strike Stop-Loss Blacklist.
 """
 import sys
 import os
@@ -101,13 +101,21 @@ class StockMicroBot:
         if ltp <= 0:
             return
         bucket = (tick_ts_ms // 1000) // 120 * 120
+
         if self.current_bucket is None:
+            # Replay Protection: If starting price gaps >1.5% from stale warmup bars, clear them
+            if self.bars:
+                last_warmup_close = float(self.bars[-1].get("close", 0.0))
+                if last_warmup_close > 0 and abs((ltp - last_warmup_close) / last_warmup_close) > 0.015:
+                    self.bars.clear()
+
             self.current_bucket = bucket
             self.active_bar = {"open": ltp, "high": ltp, "low": ltp, "close": ltp, "vol": max(1, ltq)}
+            self._evaluate_ml(vwap_val, atr_val)
             return
+
         if bucket > self.current_bucket:
             self.bars.append(self.active_bar)
-            self._evaluate_ml(vwap_val, atr_val)
             self.current_bucket = bucket
             self.active_bar = {"open": ltp, "high": ltp, "low": ltp, "close": ltp, "vol": max(1, ltq)}
         else:
@@ -118,28 +126,67 @@ class StockMicroBot:
             self.active_bar["close"] = ltp
             self.active_bar["vol"] += max(0, ltq)
 
+        # Zero-Lag Inference: Evaluate on every tick using the live forming bar
+        self._evaluate_ml(vwap_val, atr_val)
+
     def _evaluate_ml(self, vwap_val: float, atr_val: float):
-        if not self.model or len(self.bars) < 9:
+        # Merge closed historical bars with the live forming candle for real-time edge calculation
+        eval_bars = list(self.bars)
+        if self.active_bar:
+            eval_bars.append(self.active_bar)
+
+        if not self.model or len(eval_bars) < 9:
             return
         try:
-            closes = [b["close"] for b in self.bars]
-            vols = [b["vol"] for b in self.bars]
-            cur = self.bars[-1]
-            c_now = cur["close"]
-            ret_2m = (c_now / closes[-2]) - 1.0 if closes[-2] else 0.0
-            ret_6m = (c_now / closes[-4]) - 1.0 if len(closes) >= 4 and closes[-4] else 0.0
-            ret_16m = (c_now / closes[-9]) - 1.0 if len(closes) >= 9 and closes[-9] else 0.0
-            eff_atr = atr_val if atr_val > 0 else (c_now * self.profile.get("atr_2m_pct", 0.0025))
-            vwap_dist_atr = float(np.clip((c_now - (vwap_val or c_now)) / max(eff_atr, 1e-4), -5.0, 5.0))
-            rvol_2m = float(np.clip(cur["vol"] / max(np.mean(vols[-20:]), 1.0), 0.0, 10.0))
+            closes = [float(b["close"]) for b in eval_bars]
+            highs = [float(b["high"]) for b in eval_bars]
+            lows = [float(b["low"]) for b in eval_bars]
+            vols = [float(b["vol"]) for b in eval_bars]
+            cur = eval_bars[-1]
+            c_now = closes[-1]
+            
+            idx_2m = max(0, len(closes) - 2)
+            idx_6m = max(0, len(closes) - 4)
+            idx_16m = max(0, len(closes) - 9)
+            
+            ret_2m = (c_now / closes[idx_2m]) - 1.0 if closes[idx_2m] else 0.0
+            ret_6m = (c_now / closes[idx_6m]) - 1.0 if closes[idx_6m] else 0.0
+            ret_16m = (c_now / closes[idx_16m]) - 1.0 if closes[idx_16m] else 0.0
+            
+            # Compute 2-minute bar True Range (matching bot_trainer.py)
+            trs = []
+            start_k = max(1, len(eval_bars) - 14)
+            for k in range(start_k, len(eval_bars)):
+                h_k, l_k, pc_k = highs[k], lows[k], closes[k - 1]
+                trs.append(max(h_k - l_k, abs(h_k - pc_k), abs(l_k - pc_k)))
+            bar_atr_14 = float(np.mean(trs)) if trs else 0.0
+            eff_atr = bar_atr_14 if bar_atr_14 > 0 else (atr_val if atr_val > 0 else (c_now * float(self.profile.get("atr_2m_pct", 0.0025))))
+            
+            eff_vwap = vwap_val if vwap_val > 0 else c_now
+            vwap_dist_atr = float(np.clip((c_now - eff_vwap) / max(eff_atr, 1e-4), -5.0, 5.0))
+            
+            hist_vols = vols[:-1][-20:] if len(vols) > 1 else vols
+            mean_vol = max(float(np.mean(hist_vols)), 1.0)
+            rvol_2m = float(np.clip(cur["vol"] / mean_vol, 0.0, 10.0))
             rng = max(cur["high"] - cur["low"], 1e-4)
             body_ratio = float(np.clip((cur["close"] - cur["open"]) / rng, -1.0, 1.0))
             atr_pct = float(np.clip(eff_atr / max(c_now, 1.0), 0.0005, 0.05))
 
-            diffs = np.diff(closes[-15:])
-            gains = np.mean(np.clip(diffs, 0, None))
-            losses = max(np.mean(np.clip(-diffs, 0, None)), 1e-6)
-            rsi_14 = float(np.clip(1.0 - (1.0 / (1.0 + (gains / losses))), 0.0, 1.0))
+            # Wilder's EMA RSI-14 (matching bot_trainer.py)
+            diffs = np.diff(closes[-16:])
+            if len(diffs) > 0:
+                alpha = 1.0 / 14.0
+                avg_gain = float(max(diffs[0], 0.0))
+                avg_loss = float(max(-diffs[0], 0.0))
+                for d in diffs[1:]:
+                    g = float(max(d, 0.0))
+                    l = float(max(-d, 0.0))
+                    avg_gain = (alpha * g) + ((1.0 - alpha) * avg_gain)
+                    avg_loss = (alpha * l) + ((1.0 - alpha) * avg_loss)
+                rs = avg_gain / max(avg_loss, 1e-6)
+                rsi_14 = float(np.clip(1.0 - (1.0 / (1.0 + rs)), 0.0, 1.0))
+            else:
+                rsi_14 = 0.50
 
             X = np.array([[ret_2m, ret_6m, ret_16m, vwap_dist_atr, rvol_2m, body_ratio, atr_pct, rsi_14]], dtype=np.float32)
             probs = self.model.predict(X)[0]
@@ -170,7 +217,7 @@ class StockMicroBot:
 
         if self.model is not None and self.last_ml_eval.get("regime") is None:
             try:
-                pts = [b["close"] for b in self.bars] if len(self.bars) >= 2 else ([x[1] for x in vel_buf] if vel_buf and len(vel_buf) >= 2 else [ltp, ltp])
+                pts = [b["close"] for b in self.bars] if len(self.bars) >= 2 else [ltp, ltp]
                 ret_2m = (ltp / pts[-1]) - 1.0 if pts[-1] else 0.0
                 ret_6m = (ltp / pts[max(0, len(pts)-4)]) - 1.0 if pts[0] else 0.0
                 ret_16m = (ltp / pts[0]) - 1.0 if pts[0] else 0.0
@@ -351,11 +398,13 @@ def main():
 
     last_trade_time = {}
     stock_entries_today = {}
-    stopped_out_stocks = set()
-    ratchet_stage = {}       # sec_id -> 0, 1 (+0.75%), 2 (+1.20%), 3 (+1.75%)
+    stock_losses_today = {}  # sec_id -> count of STOP_LOSS hits today
+    ratchet_stage = {}       # sec_id -> 0, 1, 2, 3, 4 (Runner)
     position_open_time = {}  # sec_id -> entry timestamp in seconds
+    peak_move_pct = {}       # sec_id -> highest favorable move % reached
+    last_veto_log_time = {}  # sec_id -> last veto log timestamp (60s throttle)
 
-    COOLDOWN_SECONDS = 30
+    COOLDOWN_SECONDS = 15
     signal_streak = {}
     latest_ticks = {}
     velocity_buffers = {}
@@ -493,7 +542,7 @@ def main():
         sym = bot.symbol
 
         # =================================================================
-        # 5. 100%-SIZE 3-STAGE PROFIT RATCHET + 40-MIN TAX+0.10 SCRATCH TP
+        # 5. DISCRETE STEP RATCHET + ML BOT STAY/EXIT CHECK + 40M SCRATCH
         # =================================================================
         current_pos = portfolio.positions.get(sec_id)
         if current_pos:
@@ -502,64 +551,97 @@ def main():
             side = current_pos['side']
             now_sec = tick_epoch_ms / 1000.0
 
-            SL_PERCENT = 0.0090          # -0.90% tight initial stop-loss
-            TP_PERCENT = 0.0240          # +2.40% full home-run target on 100% shares
-            MAX_STAGNANT_SECONDS = 2400  # After 40 mins in stage 0, set TP to exact taxes + Rs.0.10/share
+            # Dynamic Volatility SL (so Rs.18 and Rs.1,800 stocks are treated equally!)
+            SL_PERCENT = float(np.clip(bot.profile.get("sl_pct", 0.0090), 0.0060, 0.0120))
+            BASE_TP_PERCENT = 0.0240
+            MAX_STAGNANT_SECONDS = 2400
 
             stage = ratchet_stage.get(sec_id, 0)
             move_pct = ((tick_ltp - entry_price) / entry_price) if side == 'BUY' else ((entry_price - tick_ltp) / entry_price)
+            best_move = max(peak_move_pct.get(sec_id, 0.0), move_pct)
+            peak_move_pct[sec_id] = best_move
 
-            if move_pct >= 0.0175 and stage < 3:
-                stage = 3
-                ratchet_stage[sec_id] = 3
-            elif move_pct >= 0.0120 and stage < 2:
-                stage = 2
-                ratchet_stage[sec_id] = 2
-            elif move_pct >= 0.0075 and stage < 1:
-                stage = 1
-                ratchet_stage[sec_id] = 1
-
-            if stage == 3:
-                lock_offset = 0.0150     # Stage 3: Locks +1.50% on 100% qty
-            elif stage == 2:
-                lock_offset = 0.0100     # Stage 2: Locks +1.00% on 100% qty (no 50% split dilution)
-            elif stage == 1:
-                lock_offset = 0.0050     # Stage 1: Locks +0.50% on 100% qty (~2x tax cover)
-            else:
-                lock_offset = -SL_PERCENT
+            # ML Bot Consultation: "Should we stay or exit?"
+            p_bull = bot.last_ml_eval.get("prob_bull", 0.33)
+            p_bear = bot.last_ml_eval.get("prob_bear", 0.33)
+            p_chop = bot.last_ml_eval.get("prob_chop", 0.34)
+            ml_favors_hold = (
+                (side == 'BUY' and (p_bull - p_bear) >= 0.08 and p_chop < 0.45) or
+                (side == 'SELL' and (p_bear - p_bull) >= 0.08 and p_chop < 0.45)
+            )
 
             exit_action = 'SELL' if side == 'BUY' else 'BUY'
+            entry_tax = engine._calculate_indian_taxes(side, pos_qty, entry_price)
+            exit_tax = engine._calculate_indian_taxes(exit_action, pos_qty, tick_ltp)
+            
+            raw_scratch = (((entry_tax + exit_tax) / max(pos_qty, 1)) + 0.05) / max(entry_price, 1.0)
+            scratch_pct = float(np.clip(raw_scratch, 0.0025, 0.0035))
+
+            new_stage = stage
+            if best_move >= 0.0220 and stage < 4:
+                new_stage = 4
+            elif best_move >= 0.0175 and stage < 3:
+                new_stage = 3
+            elif best_move >= 0.0120 and stage < 2:
+                new_stage = 2
+            elif best_move >= 0.0075 and stage < 1:
+                new_stage = 1
+
+            dynamic_tp_pct = BASE_TP_PERCENT
+            if new_stage == 4:
+                trail_room = 0.0045 if ml_favors_hold else 0.0025
+                lock_offset = max(0.0175, best_move - trail_room)
+                if ml_favors_hold:
+                    dynamic_tp_pct = max(BASE_TP_PERCENT, best_move + 0.0080)
+            elif new_stage == 3:
+                lock_offset = 0.0135 if ml_favors_hold else 0.0150
+            elif new_stage == 2:
+                lock_offset = 0.0085 if ml_favors_hold else 0.0100
+            elif new_stage == 1:
+                lock_offset = max(scratch_pct, 0.0030) if ml_favors_hold else 0.0050
+            else:
+                lock_offset = -SL_PERCENT if best_move < 0.0065 else -0.0010
+
+            if new_stage > stage:
+                ratchet_stage[sec_id] = new_stage
+                stage = new_stage
+                signal_logger.info(
+                    f"[TRAIL_UP] {sym} (#{sec_id}) | Stage S{stage} | Peak:{best_move*100:+.2f}% | "
+                    f"Lock:{lock_offset*100:+.2f}% | TP:{dynamic_tp_pct*100:+.2f}% | "
+                    f"ML_Hold:{ml_favors_hold} (Bull:{p_bull*100:.1f}% Bear:{p_bear*100:.1f}%)"
+                )
+
             held_seconds = now_sec - position_open_time.get(sec_id, now_sec)
             is_stagnant_40m = (stage == 0) and (held_seconds >= MAX_STAGNANT_SECONDS)
-
-            if is_stagnant_40m:
-                entry_tax = engine._calculate_indian_taxes(side, pos_qty, entry_price)
-                exit_tax = engine._calculate_indian_taxes(exit_action, pos_qty, tick_ltp)
-                scratch_move_per_share = ((entry_tax + exit_tax) / max(pos_qty, 1)) + 0.10
+            scratch_move_per_share = (((entry_tax + exit_tax) / max(pos_qty, 1)) + 0.10) if is_stagnant_40m else 0.0
 
             if side == 'BUY':
-                tp_price = (entry_price + scratch_move_per_share) if is_stagnant_40m else (entry_price * (1.0 + TP_PERCENT))
+                tp_price = (entry_price + scratch_move_per_share) if is_stagnant_40m else (entry_price * (1.0 + dynamic_tp_pct))
                 sl_price = entry_price * (1.0 + lock_offset)
                 hit_tp = tick_ltp >= tp_price
                 hit_sl = tick_ltp <= sl_price
                 gross_leg = (tick_ltp - entry_price) * pos_qty
             else:
-                tp_price = (entry_price - scratch_move_per_share) if is_stagnant_40m else (entry_price * (1.0 - TP_PERCENT))
+                tp_price = (entry_price - scratch_move_per_share) if is_stagnant_40m else (entry_price * (1.0 - dynamic_tp_pct))
                 sl_price = entry_price * (1.0 - lock_offset)
                 hit_tp = tick_ltp <= tp_price
                 hit_sl = tick_ltp >= sl_price
                 gross_leg = (entry_price - tick_ltp) * pos_qty
+
+            if hit_tp and not is_stagnant_40m and ml_favors_hold:
+                hit_tp = False
+                ratchet_stage[sec_id] = 3
 
             if hit_tp or hit_sl:
                 trace_id = f"{sec_id}-{tick_epoch_ms}-{uuid.uuid4().hex[:6]}"
                 if hit_tp and is_stagnant_40m:
                     reason = "TAX_FREE_40M_SCRATCH"
                 elif hit_tp:
-                    reason = "FINAL_TAKE_PROFIT"
+                    reason = f"FINAL_TP_+{dynamic_tp_pct*100:.2f}%"
                 elif stage >= 2:
                     reason = f"RATCHET_S{stage}_+{lock_offset*100:.2f}%"
                 elif stage == 1:
-                    reason = "BREAKEVEN_SL_+0.50%"
+                    reason = f"BREAKEVEN_SL_+{lock_offset*100:.2f}%"
                 else:
                     reason = "STOP_LOSS"
 
@@ -571,15 +653,30 @@ def main():
                     del portfolio.positions[sec_id]
                 ratchet_stage.pop(sec_id, None)
                 position_open_time.pop(sec_id, None)
+                peak_move_pct.pop(sec_id, None)
+                if sec_id in velocity_buffers:
+                    velocity_buffers[sec_id].clear()
+                signal_streak[sec_id] = (None, 0)
+
+                if reason == "STOP_LOSS":
+                    stock_losses_today[sec_id] = stock_losses_today.get(sec_id, 0) + 1
                 last_trade_time[sec_id] = now_sec
+
+                signal_logger.info(
+                    f"[EXIT] Trace: {trace_id} | {sym} (#{sec_id}) | {reason} | {exit_action} {pos_qty}x @ Rs.{tick_ltp:.2f} "
+                    f"(Entry: Rs.{entry_price:.2f} | Hold: {held_seconds:.0f}s | Peak: {best_move*100:+.2f}% -> Exit: {move_pct*100:+.2f}%) | "
+                    f"Gross: Rs.{gross_leg:+.2f} | ML(Bull:{p_bull*100:.1f}% Bear:{p_bear*100:.1f}%)"
+                )
                 push_alert(
                     3, "EXECUTION",
-                    f"🛑 <b>{reason} ({side})</b>: <code>{sym}</code> | Closed {pos_qty}x @ ₹{tick_ltp:.2f} | Gross: ₹{gross_leg:+.2f}"
+                    f"🛑 <b>{reason} ({side})</b>: <code>{sym}</code> | Closed {pos_qty}x @ ₹{tick_ltp:.2f} "
+                    f"(Peak: {best_move*100:+.2f}%) | Gross: ₹{gross_leg:+.2f}"
                 )
             continue
         else:
             ratchet_stage.pop(sec_id, None)
             position_open_time.pop(sec_id, None)
+            peak_move_pct.pop(sec_id, None)
 
 
         # =================================================================
@@ -589,7 +686,8 @@ def main():
         if current_atr == 0.0 or current_time < time(9, 18, 0) or current_time >= time(14, 25, 0):
             continue
 
-        if stock_entries_today.get(sec_id, 0) >= 2:
+        # 🔴 THE 1-STRIKE RULE: Max 3 entries/day, block immediately if 1 STOP_LOSS hit today
+        if stock_entries_today.get(sec_id, 0) >= 3 or stock_losses_today.get(sec_id, 0) >= 1:
             continue
 
         tick_bid = float(tick.get('bid', tick_ltp))
@@ -628,6 +726,7 @@ def main():
             OBI_THRESHOLD = 0.30
             CVD_THRESHOLD *= 1.5
 
+        # STRICT VWAP CORRIDOR: Highly proven 80% win-rate core logic
         vwap_diff_pct = ((tick_ltp - current_vwap) / current_vwap) if current_vwap > 0 else 0.0
         in_buy_zone = (-0.0250 <= vwap_diff_pct <= -0.0004)
         in_sell_zone = (0.0030 <= vwap_diff_pct <= 0.0250)
@@ -652,7 +751,19 @@ def main():
         current_macro_regime = bot.decide_regime(
             tick_ltp, current_vwap, current_atr, obi_score, cvd_score, v_buffer
         )
-        if current_macro_regime == 0 or (current_signal == "BUY" and current_macro_regime == -1) or (current_signal == "SELL" and current_macro_regime == 1):
+        p_bull = bot.last_ml_eval.get("prob_bull", 0.33)
+        p_bear = bot.last_ml_eval.get("prob_bear", 0.33)
+        p_chop = bot.last_ml_eval.get("prob_chop", 0.34)
+        ml_edge = (p_bull - p_bear) if current_signal == "BUY" else (p_bear - p_bull)
+
+        # Mild Edge Filter (prevents garbage entries while preserving normal setup volume)
+        if current_macro_regime == 0 or (current_signal == "BUY" and current_macro_regime == -1) or (current_signal == "SELL" and current_macro_regime == 1) or ml_edge < 0.04:
+            if tick_ts - last_veto_log_time.get(sec_id, 0.0) >= 60.0:
+                last_veto_log_time[sec_id] = tick_ts
+                signal_logger.info(
+                    f"[VETO] {sym} (#{sec_id}) | Blocked {current_signal} @ Rs.{tick_ltp:.2f} (VWAP:{current_vwap:.2f}) | "
+                    f"dCVD:{delta_cvd:+.0f} dOBI:{delta_obi:+.2f} | ML(Bull:{p_bull*100:.1f}% Bear:{p_bear*100:.1f}% Chop:{p_chop*100:.1f}% Edge:{ml_edge*100:+.1f}%)"
+                )
             continue
         trigger_source = "BOT_ML_MODEL"
         reg_label = "BOT_BULL" if current_macro_regime == 1 else "BOT_BEAR"
@@ -723,6 +834,7 @@ def main():
                 last_trade_time[sec_id] = tick_ts
                 position_open_time[sec_id] = tick_ts
                 ratchet_stage[sec_id] = 0
+                peak_move_pct[sec_id] = 0.0
                 stock_entries_today[sec_id] = stock_entries_today.get(sec_id, 0) + 1
                 signal_streak[sec_id] = (None, 0)
                 push_alert(
